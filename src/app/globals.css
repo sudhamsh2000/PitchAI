@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #07080b;
+  --bg-elevated: #0c0e14;
+  --bg-panel: #0f1118;
+  --border: rgba(255, 255, 255, 0.08);
+  --muted: #8a8f98;
+  --text: #e8eaef;
+  --accent: #6ee7ff;
+  --accent-2: #a78bfa;
+  --danger: #fb7185;
+  --glow: rgba(110, 231, 255, 0.35);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-panel: var(--bg-panel);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-text: var(--text);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: radial-gradient(1200px 800px at 20% -10%, rgba(110, 231, 255, 0.08), transparent),
+    radial-gradient(900px 600px at 100% 0%, rgba(167, 139, 250, 0.08), transparent),
+    var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+::selection {
+  background: rgba(110, 231, 255, 0.25);
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(110, 231, 255, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 14px rgba(110, 231, 255, 0);
+  }
+}
+
+@keyframes bar-dance {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.animate-mic-glow {
+  animation: pulse-glow 1.8s ease-in-out infinite;
+}
+
+.wave-bar {
+  transform-origin: bottom;
+  animation: bar-dance 0.9s ease-in-out infinite;
+}
