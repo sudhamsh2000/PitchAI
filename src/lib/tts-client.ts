@@ -16,10 +16,19 @@ function releaseAudio() {
 async function parseError(res: Response) {
   const text = await res.text();
   try {
-    const parsed = JSON.parse(text) as { error?: string };
-    return parsed.error || `Premium voice request failed (${res.status})`;
+    const parsed = JSON.parse(text) as { error?: string; detail?: string };
+    const raw = parsed.error || parsed.detail || `Natural voice request failed (${res.status})`;
+    if (
+      /incorrect api key|invalid api key|needs OPENAI_API_KEY|401|unauthorized/i.test(raw)
+    ) {
+      return "Natural voice is unavailable right now. Falling back to browser voice.";
+    }
+    return raw;
   } catch {
-    return text || `Premium voice request failed (${res.status})`;
+    if (/incorrect api key|invalid api key|401|unauthorized/i.test(text)) {
+      return "Natural voice is unavailable right now. Falling back to browser voice.";
+    }
+    return text || `Natural voice request failed (${res.status})`;
   }
 }
 
@@ -35,10 +44,10 @@ export async function speakPremiumText(
     onEnd?: () => void;
     onError?: (message: string) => void;
   },
-) {
+): Promise<boolean> {
   try {
     const input = text.trim();
-    if (!input) return;
+    if (!input) return false;
     releaseAudio();
 
     const res = await fetch("/api/tts", {
@@ -49,7 +58,7 @@ export async function speakPremiumText(
 
     if (!res.ok) {
       options?.onError?.(await parseError(res));
-      return;
+      return false;
     }
 
     const blob = await res.blob();
@@ -64,13 +73,15 @@ export async function speakPremiumText(
       releaseAudio();
     };
     audio.onerror = () => {
-      options?.onError?.("Premium voice playback failed.");
+      options?.onError?.("Natural voice playback failed.");
       releaseAudio();
     };
 
     await audio.play();
+    return true;
   } catch (e) {
-    options?.onError?.(e instanceof Error ? e.message : "Premium voice playback failed.");
+    options?.onError?.(e instanceof Error ? e.message : "Natural voice playback failed.");
+    return false;
   }
 }
 

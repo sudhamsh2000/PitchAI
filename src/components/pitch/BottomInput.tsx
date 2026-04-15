@@ -13,6 +13,7 @@ export function BottomInput({
   disabled,
   placeholder,
   modeNote,
+  liveSession,
 }: {
   draft: string;
   onDraftChange: (v: string) => void;
@@ -24,6 +25,7 @@ export function BottomInput({
   placeholder?: string;
   /** Shown under the textarea (e.g. current mode behavior) — not used as textarea placeholder */
   modeNote?: string;
+  liveSession?: boolean;
 }) {
   return (
     <div className="border-t border-white/10 bg-black/45 px-5 py-4 backdrop-blur-xl">
@@ -42,6 +44,11 @@ export function BottomInput({
               className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-zinc-100 outline-none ring-0 placeholder:text-zinc-600 focus:border-cyan-400/40"
             />
             {modeNote ? <p className="text-[11px] leading-relaxed text-zinc-500">{modeNote}</p> : null}
+            {liveSession ? (
+              <p className="text-[11px] text-cyan-200/80">
+                Live mode is automatic: speak your answer and it submits when you pause.
+              </p>
+            ) : null}
           </div>
 
           <div className="flex items-center justify-between gap-3 lg:flex-col lg:items-stretch">
@@ -83,15 +90,21 @@ export function BottomInput({
               <Waveform active={recording} />
             </div>
 
-            <motion.button
-              type="button"
-              disabled={disabled || !draft.trim()}
-              whileTap={{ scale: 0.98 }}
-              onClick={onSend}
-              className="rounded-xl bg-gradient-to-r from-cyan-400 to-violet-500 px-5 py-3 text-sm font-semibold text-black disabled:opacity-40"
-            >
-              Submit answer
-            </motion.button>
+            {!liveSession ? (
+              <motion.button
+                type="button"
+                disabled={disabled || !draft.trim()}
+                whileTap={{ scale: 0.98 }}
+                onClick={onSend}
+                className="rounded-xl bg-gradient-to-r from-cyan-400 to-violet-500 px-5 py-3 text-sm font-semibold text-black disabled:opacity-40"
+              >
+                Submit answer
+              </motion.button>
+            ) : (
+              <div className="rounded-xl border border-cyan-400/35 bg-cyan-500/10 px-4 py-3 text-center text-xs font-medium text-cyan-100">
+                Auto-submit enabled
+              </div>
+            )}
           </div>
         </div>
         <p className="text-[11px] text-zinc-500">

@@ -7,9 +7,11 @@ import type { NABCSection, PitchMode } from "@/types/pitch";
 export const runtime = "nodejs";
 
 const BASE_SYSTEM = `You are a strict but helpful startup pitch coach using the NABC framework (Need, Approach, Benefits, Competition).
+Your name is Friday.
 You behave like an incubator mentor and pitch competition judge: direct, analytical, not overly polite.
 You ask sharp questions, challenge vague answers, and prioritize clarity, specificity, and real business value.
 Do not give generic praise. Always push for stronger answers with concrete examples, numbers, and differentiation.
+Introduce yourself as Friday in the first response only.
 When returning JSON, follow the schema exactly with no markdown fences.`;
 
 function sanitizeErrorMessage(message: string) {
@@ -27,6 +29,15 @@ function modelName() {
     return process.env.OPENROUTER_MODEL?.trim() || "openrouter/free";
   }
   return process.env.OPENAI_MODEL?.trim() || "gpt-4o";
+}
+
+function fallbackModels() {
+  const configured = (process.env.OPENROUTER_FALLBACK_MODELS || "")
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+  if (configured.length) return configured;
+  return ["openrouter/auto", "openai/gpt-4o-mini"];
 }
 
 function client() {
@@ -82,6 +93,38 @@ function systemForMode(mode: PitchMode, pitchBrief: string) {
   return `${BASE_SYSTEM}\n${modeLine}${founderContextBlock(pitchBrief)}`;
 }
 
+async function createCoachCompletion(
+  openai: OpenAI,
+  payload: { temperature: number; messages: Array<{ role: "system" | "user" | "assistant"; content: string }> },
+) {
+  const primary = modelName();
+  try {
+    return await openai.chat.completions.create({
+      model: primary,
+      temperature: payload.temperature,
+      messages: payload.messages,
+    });
+  } catch (e) {
+    const status = Number((e as { status?: number })?.status || 0);
+    if (!usingOpenRouter() || status !== 429) throw e;
+
+    let lastError: unknown = e;
+    for (const fallback of fallbackModels()) {
+      if (!fallback || fallback === primary) continue;
+      try {
+        return await openai.chat.completions.create({
+          model: fallback,
+          temperature: payload.temperature,
+          messages: payload.messages,
+        });
+      } catch (fallbackError) {
+        lastError = fallbackError;
+      }
+    }
+    throw lastError;
+  }
+}
+
 export async function POST(req: Request) {
   const openai = client();
   if (!openai) {
@@ -108,14 +151,13 @@ export async function POST(req: Request) {
         );
       }
 
-      const completion = await openai.chat.completions.create({
-        model: modelName(),
+      const completion = await createCoachCompletion(openai, {
         temperature: 0.7,
         messages: [
           { role: "system", content: systemForMode(mode, pitchBrief) },
           {
             role: "user",
-            content: `Start the voice interview. Briefly set expectations (1-2 sentences), acknowledge you understand their context at a high level, then ask the first sharp NABC question focused ONLY on NEED.
+            content: `Start the voice interview. Introduce yourself as Friday in one short sentence. Then briefly set expectations (1-2 sentences), acknowledge you understand their context at a high level, and ask the first sharp NABC question focused ONLY on NEED.
 Return JSON: {"assistantMessage": string, "activeSection": "need"}`,
           },
         ],
@@ -130,7 +172,7 @@ Return JSON: {"assistantMessage": string, "activeSection": "need"}`,
       }
       return NextResponse.json({
         assistantMessage:
-          "Got it. I understand your pitch context. Let's start with Need: what specific, painful problem are you solving, for exactly which user segment?",
+          "Hi, I'm Friday - your pitch coach. I understand your context. Let's start with Need: what specific, painful problem are you solving, for exactly which user segment?",
         activeSection: "need" as NABCSection,
       });
     }
@@ -141,8 +183,7 @@ Return JSON: {"assistantMessage": string, "activeSection": "need"}`,
       const followUps = Number(body.followUpsAskedThisSection) || 0;
       const userAnswer = String(body.userAnswer || "");
 
-      const completion = await openai.chat.completions.create({
-        model: modelName(),
+      const completion = await createCoachCompletion(openai, {
         temperature: 0.55,
         messages: [
           { role: "system", content: systemForMode(mode, pitchBrief) },
@@ -256,8 +297,7 @@ Rules:
         bullets: string[];
       };
 
-      const completion = await openai.chat.completions.create({
-        model: modelName(),
+      const completion = await createCoachCompletion(openai, {
         temperature: 0.65,
         messages: [
           { role: "system", content: systemForMode(mode, pitchBrief) },
@@ -289,8 +329,7 @@ The improved answer should be 3-8 sentences, voice-friendly, concrete, and not b
     if (action === "final_pitches") {
       const messages = body.messages as ApiMsg[];
 
-      const completion = await openai.chat.completions.create({
-        model: modelName(),
+      const completion = await createCoachCompletion(openai, {
         temperature: 0.55,
         messages: [
           { role: "system", content: systemForMode(mode, pitchBrief) },
@@ -338,6 +377,17 @@ Rules: keep voice natural, strong hook, clear problem, differentiated approach, 
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {
+    const status = Number((e as { status?: number })?.status || 0);
+    if (status === 429) {
+      return NextResponse.json(
+        {
+          error: usingOpenRouter()
+            ? "OpenRouter is rate-limiting this model right now (429). Wait 20-60 seconds and try again, or switch OPENROUTER_MODEL to a less busy model."
+            : "OpenAI rate limit reached (429). Wait a moment and try again.",
+        },
+        { status: 429 },
+      );
+    }
     const message = e instanceof Error ? sanitizeErrorMessage(e.message) : "Coach error";
     return NextResponse.json({ error: message }, { status: 500 });
   }

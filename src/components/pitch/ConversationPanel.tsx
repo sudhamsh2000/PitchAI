@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import type { PitchMessage } from "@/types/pitch";
+import { normalizeForSpeech } from "@/lib/speech-text";
 import { speakText, stopSpeaking } from "@/hooks/useVoice";
 import { speakPremiumText, stopPremiumSpeech } from "@/lib/tts-client";
 
@@ -11,18 +12,16 @@ export function ConversationPanel({
   interim,
   liveSession,
   liveActive,
-  premiumVoice,
-  premiumVoiceName,
-  onVoiceError,
+  naturalVoice,
+  naturalVoiceName,
 }: {
   messages: PitchMessage[];
   typing: boolean;
   interim: string;
   liveSession?: boolean;
   liveActive?: boolean;
-  premiumVoice?: boolean;
-  premiumVoiceName?: string;
-  onVoiceError?: (message: string) => void;
+  naturalVoice?: boolean;
+  naturalVoiceName?: string;
 }) {
   return (
     <div className="flex h-full flex-col bg-black/20">
@@ -71,23 +70,25 @@ export function ConversationPanel({
               >
                 <div className="mb-1 flex items-center justify-between gap-3">
                   <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
-                    {m.role === "user" ? "You" : "Coach"}
+                    {m.role === "user" ? "You" : "Friday"}
                   </span>
                   {m.role === "assistant" ? (
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={() => void (async () => {
+                        const spokenText = normalizeForSpeech(m.content);
+                        if (!spokenText) return;
                         stopSpeaking();
                         stopPremiumSpeech();
-                        if (premiumVoice) {
-                          void speakPremiumText(m.content, {
-                            voice: premiumVoiceName,
-                            onError: onVoiceError,
+                        if (naturalVoice) {
+                          const ok = await speakPremiumText(spokenText, {
+                            voice: naturalVoiceName,
                           });
+                          if (!ok) speakText(spokenText);
                         } else {
-                          speakText(m.content);
+                          speakText(spokenText);
                         }
-                      }}
+                      })()}
                       className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-zinc-200 hover:border-cyan-400/40"
                     >
                       <svg
@@ -104,7 +105,7 @@ export function ConversationPanel({
                         <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
                         <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
                       </svg>
-                      {premiumVoice ? "Play HD" : "Play"}
+                      {naturalVoice ? "Play HD" : "Play"}
                     </button>
                   ) : null}
                 </div>
@@ -144,53 +145,90 @@ export function ConversationPanel({
 }
 
 function CircularSpectrum({ active }: { active: boolean }) {
-  const bars = Array.from({ length: 36 }, (_, i) => i);
   return (
-    <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.02] py-4">
-      <div className="relative mx-auto h-32 w-32">
+    <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.02] py-5">
+      <div className="relative mx-auto h-40 w-40">
         <motion.div
-          className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-400/25 via-indigo-400/15 to-fuchsia-400/25 blur-xl"
-          animate={active ? { scale: [0.9, 1.08, 0.95, 1.05, 0.9], opacity: [0.45, 0.75, 0.55, 0.7, 0.45] } : { scale: 0.9, opacity: 0.35 }}
+          className="absolute inset-0 rounded-full bg-cyan-400/20 blur-2xl"
+          animate={
+            active
+              ? { scale: [0.9, 1.12, 0.95, 1.06, 0.9], opacity: [0.35, 0.75, 0.45, 0.65, 0.35] }
+              : { scale: 0.9, opacity: 0.25 }
+          }
+          transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.svg
+          viewBox="0 0 160 160"
+          className="absolute inset-0"
+          animate={active ? { rotate: [0, 360] } : { rotate: 0 }}
+          transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+        >
+          <defs>
+            <linearGradient id="fridaySpectrum" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="rgba(69, 229, 255, 0.95)" />
+              <stop offset="55%" stopColor="rgba(84, 255, 249, 0.82)" />
+              <stop offset="100%" stopColor="rgba(89, 145, 255, 0.95)" />
+            </linearGradient>
+            <filter id="fridayGlow" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+          <motion.circle
+            cx="80"
+            cy="80"
+            r="56"
+            fill="none"
+            stroke="url(#fridaySpectrum)"
+            strokeWidth="3"
+            strokeLinecap="round"
+            filter="url(#fridayGlow)"
+            strokeDasharray="126 52 62 88 142 74"
+            animate={
+              active
+                ? {
+                    strokeDashoffset: [0, -230],
+                    pathLength: [0.96, 1, 0.97, 0.99, 0.96],
+                    scale: [0.985, 1.04, 0.99, 1.025, 0.985],
+                    opacity: [0.82, 1, 0.86, 0.95, 0.82],
+                  }
+                : {
+                    strokeDashoffset: 0,
+                    pathLength: 0.95,
+                    scale: 0.985,
+                    opacity: 0.6,
+                  }
+            }
+            transition={{
+              duration: active ? 2.4 : 0.4,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+            style={{ transformOrigin: "80px 80px" }}
+          />
+          <motion.circle
+            cx="80"
+            cy="80"
+            r="56"
+            fill="none"
+            stroke="rgba(116, 245, 255, 0.25)"
+            strokeWidth="1.2"
+            strokeDasharray="14 16"
+            animate={
+              active
+                ? { strokeDashoffset: [0, 90], opacity: [0.2, 0.45, 0.2] }
+                : { strokeDashoffset: 0, opacity: 0.16 }
+            }
+            transition={{ duration: 1.8, repeat: Infinity, ease: "linear" }}
+          />
+        </motion.svg>
+        <motion.div
+          className="absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200/35 bg-cyan-300/10"
+          animate={active ? { scale: [0.92, 1.2, 0.95, 1.08, 0.92], opacity: [0.45, 0.9, 0.5, 0.75, 0.45] } : { scale: 0.92, opacity: 0.3 }}
           transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.div
-          className="absolute inset-3 rounded-full border border-cyan-300/40"
-          animate={active ? { scale: [0.95, 1.08, 0.98], opacity: [0.4, 0.9, 0.4] } : { scale: 0.95, opacity: 0.3 }}
-          transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.div
-          className="absolute inset-6 rounded-full border border-violet-300/35"
-          animate={active ? { scale: [1, 0.88, 1], opacity: [0.25, 0.55, 0.25] } : { scale: 1, opacity: 0.2 }}
-          transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-        />
-        {bars.map((i) => {
-          const rotate = (360 / bars.length) * i;
-          const delay = i * 0.03;
-          return (
-            <motion.span
-              key={i}
-              className="absolute left-1/2 top-1/2 block h-8 w-[2px] origin-bottom rounded-full bg-gradient-to-t from-cyan-500/25 via-cyan-300 to-violet-300"
-              style={{ transform: `translate(-50%, -106%) rotate(${rotate}deg)` }}
-              animate={
-                active
-                  ? { scaleY: [0.25, 1.1, 0.4, 1, 0.3], opacity: [0.35, 1, 0.6, 1, 0.35] }
-                  : { scaleY: 0.2, opacity: 0.25 }
-              }
-              transition={{
-                duration: 0.75,
-                repeat: active ? Infinity : 0,
-                delay,
-                ease: "easeInOut",
-              }}
-            />
-          );
-        })}
-        <motion.div
-          className={`absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full border ${
-            active ? "border-cyan-200/80 bg-cyan-400/15" : "border-white/20 bg-white/5"
-          }`}
-          animate={active ? { scale: [0.95, 1.08, 0.95] } : { scale: 0.95 }}
-          transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
         />
       </div>
       <p className="mt-2 text-center text-[11px] text-zinc-500">

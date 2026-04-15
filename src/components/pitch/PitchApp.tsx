@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePitchStore } from "@/store/usePitchStore";
 import { coachEvaluate, coachFinal, coachRewrite, coachStart } from "@/lib/coach-client";
 import { PITCH_MODES } from "@/lib/modes";
+import { normalizeForSpeech } from "@/lib/speech-text";
 import { speakText, stopSpeaking, useVoice } from "@/hooks/useVoice";
 import { speakPremiumText, stopPremiumSpeech } from "@/lib/tts-client";
 import { TopBar } from "./TopBar";
@@ -19,9 +20,10 @@ export function PitchApp() {
   const [draft, setDraft] = useState("");
   const [setupBusy, setSetupBusy] = useState(false);
   const [liveSession, setLiveSession] = useState(false);
-  const [premiumVoice, setPremiumVoice] = useState(false);
-  const [premiumVoiceName, setPremiumVoiceName] = useState("alloy");
+  const [naturalVoiceName] = useState("alloy");
+  const [coachSpeaking, setCoachSpeaking] = useState(false);
   const [lastSpokenAssistantId, setLastSpokenAssistantId] = useState<string | null>(null);
+  const liveAutoSubmitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sessionPhase = usePitchStore((s) => s.sessionPhase);
   const pitchBrief = usePitchStore((s) => s.pitchBrief);
@@ -70,6 +72,10 @@ export function PitchApp() {
     (msg: string) => {
       setError(msg);
       setRecording(false);
+      if (liveAutoSubmitTimer.current) {
+        clearTimeout(liveAutoSubmitTimer.current);
+        liveAutoSubmitTimer.current = null;
+      }
     },
     [setError, setRecording],
   );
@@ -77,6 +83,7 @@ export function PitchApp() {
   const { supported: micSupported, startListening, stopListening } = useVoice(
     onFinalSpeech,
     onRecognitionError,
+    () => setRecording(false),
   );
 
   const startCoachingSession = useCallback(async () => {
@@ -111,18 +118,31 @@ export function PitchApp() {
 
   const speakCoach = useCallback(
     (text: string) => {
+      const spokenText = normalizeForSpeech(text);
+      if (!spokenText) return;
+      // Prevent Friday's own voice from being captured as user input.
+      stopListening();
+      setRecording(false);
+      setInterim("");
       stopSpeaking();
       stopPremiumSpeech();
-      if (premiumVoice) {
-        void speakPremiumText(text, {
-          voice: premiumVoiceName,
-          onError: (msg) => setError(msg),
+      setCoachSpeaking(true);
+      void (async () => {
+        const ok = await speakPremiumText(spokenText, {
+          voice: naturalVoiceName,
+          onEnd: () => setCoachSpeaking(false),
+          onError: () => setCoachSpeaking(false),
         });
-      } else {
-        speakText(text);
-      }
+        if (!ok) {
+          speakText(
+            spokenText,
+            () => setCoachSpeaking(true),
+            () => setCoachSpeaking(false),
+          );
+        }
+      })();
     },
-    [premiumVoice, premiumVoiceName, setError],
+    [naturalVoiceName, setInterim, setRecording, stopListening],
   );
 
   useEffect(() => {
@@ -183,7 +203,7 @@ export function PitchApp() {
     startListening((text) => setInterim(text));
   };
 
-  const submitAnswer = async () => {
+  const submitAnswer = useCallback(async () => {
     const text = draft.trim();
     if (!text) return;
     if (phase !== "asking") return;
@@ -221,7 +241,72 @@ export function PitchApp() {
     } finally {
       setTyping(false);
     }
-  };
+  }, [
+    appendMessage,
+    commitPendingQuestion,
+    draft,
+    liveSession,
+    phase,
+    setError,
+    setInterim,
+    setLastUserMessageId,
+    setPhase,
+    setRecording,
+    setTyping,
+    stashEvaluateResult,
+    stopListening,
+  ]);
+
+  // Live call behavior: once user pauses, auto-submit their spoken answer.
+  useEffect(() => {
+    if (!liveSession) return;
+    if (phase !== "asking") return;
+    if (!draft.trim()) return;
+    if (isTyping) return;
+    if (coachSpeaking) return;
+    if (liveAutoSubmitTimer.current) clearTimeout(liveAutoSubmitTimer.current);
+    liveAutoSubmitTimer.current = setTimeout(() => {
+      liveAutoSubmitTimer.current = null;
+      void submitAnswer();
+    }, isRecording ? 1300 : 180);
+    return () => {
+      if (liveAutoSubmitTimer.current) {
+        clearTimeout(liveAutoSubmitTimer.current);
+        liveAutoSubmitTimer.current = null;
+      }
+    };
+  }, [coachSpeaking, draft, isRecording, isTyping, liveSession, phase, submitAnswer]);
+
+  // Live call behavior: auto-open mic when ready for next answer.
+  useEffect(() => {
+    if (!liveSession) return;
+    if (sessionPhase !== "coaching") return;
+    if (phase !== "asking") return;
+    if (isTyping) return;
+    if (coachSpeaking) return;
+    if (isRecording) return;
+    if (draft.trim()) return;
+    if (typeof window !== "undefined" && !window.isSecureContext) return;
+    if (!micSupported) return;
+
+    setError(null);
+    setRecording(true);
+    setInterim("");
+    startListening((text) => setInterim(text));
+  }, [
+    isRecording,
+    isTyping,
+    coachSpeaking,
+    liveSession,
+    micSupported,
+    phase,
+    sessionPhase,
+    draft,
+    setError,
+    setInterim,
+    setRecording,
+    startListening,
+  ]);
 
   const improveAnswer = async () => {
     const fb = latestFeedback;
@@ -255,6 +340,7 @@ export function PitchApp() {
   const restartConversation = async () => {
     stopSpeaking();
     stopPremiumSpeech();
+    setCoachSpeaking(false);
     setLastSpokenAssistantId(null);
     stopListening();
     setRecording(false);
@@ -270,6 +356,7 @@ export function PitchApp() {
     if (sessionPhase !== "coaching") return;
     stopSpeaking();
     stopPremiumSpeech();
+    setCoachSpeaking(false);
     setLastSpokenAssistantId(null);
     clearCoachThread();
     setDraft("");
@@ -310,10 +397,6 @@ export function PitchApp() {
           onStart={() => void beginFromSetup()}
           liveSession={liveSession}
           onLiveSessionChange={setLiveSession}
-          premiumVoice={premiumVoice}
-          onPremiumVoiceChange={setPremiumVoice}
-          premiumVoiceName={premiumVoiceName}
-          onPremiumVoiceNameChange={setPremiumVoiceName}
           busy={setupBusy}
           minChars={MIN_BRIEF}
           error={error}
@@ -331,6 +414,7 @@ export function PitchApp() {
         onEditPitch={() => {
           stopSpeaking();
           stopPremiumSpeech();
+          setCoachSpeaking(false);
           setLastSpokenAssistantId(null);
           stopListening();
           setRecording(false);
@@ -356,9 +440,8 @@ export function PitchApp() {
           interim={interimTranscript}
           liveSession={liveSession}
           liveActive={liveSession && isRecording}
-          premiumVoice={premiumVoice}
-          premiumVoiceName={premiumVoiceName}
-          onVoiceError={setError}
+          naturalVoice
+          naturalVoiceName={naturalVoiceName}
         />
         <div className="hidden lg:block">
           <AnalysisDashboard
@@ -416,6 +499,7 @@ export function PitchApp() {
         disabled={inputDisabled}
         placeholder="Answer the coach’s question with specifics, numbers, and examples…"
         modeNote={modeHint ? `Mode: ${modeHint}` : undefined}
+        liveSession={liveSession}
       />
 
       {error ? (

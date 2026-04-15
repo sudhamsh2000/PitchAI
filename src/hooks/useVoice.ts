@@ -67,6 +67,7 @@ function humanizeRecognitionError(code: string | undefined): string {
 export function useVoice(
   onFinal: (text: string) => void,
   onRecognitionError?: (message: string) => void,
+  onListeningEnded?: () => void,
 ) {
   const supported = useMemo(() => Boolean(getRecognitionCtor()), []);
   const recRef = useRef<VoiceRecognition | null>(null);
@@ -112,6 +113,7 @@ export function useVoice(
 
       rec.onend = () => {
         recRef.current = null;
+        onListeningEnded?.();
       };
 
       recRef.current = rec;
@@ -122,7 +124,7 @@ export function useVoice(
         stopListening();
       }
     },
-    [onFinal, onRecognitionError, stopListening],
+    [onFinal, onListeningEnded, onRecognitionError, stopListening],
   );
 
   useEffect(() => () => stopListening(), [stopListening]);
