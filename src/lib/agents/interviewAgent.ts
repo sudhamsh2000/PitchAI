@@ -4,7 +4,7 @@ import { modeInstruction } from "@/lib/modes";
 import type { NABCSection, PitchMode } from "@/types/pitch";
 import { FRIDAY_INTERVIEW_SYSTEM } from "./friday-base";
 import { createCoachCompletion, tryParseJson } from "./llm-client";
-import type { ApiMsg, EvaluationAgentResult, InterviewAgentParams } from "./types";
+import type { InterviewAgentParams } from "./types";
 
 function sectionLabel(s: NABCSection | "done") {
   switch (s) {
