@@ -20,6 +20,9 @@ export interface ScoreFeedback {
   specificity: number;
   strength: number;
   bullets: string[];
+  /** Set by evaluation agent — whether another follow-up would help */
+  needsFollowup?: boolean;
+  followupReason?: string;
 }
 
 export interface FinalPitches {
@@ -39,4 +42,5 @@ export interface CoachEvaluateResult {
 
 export interface CoachRewriteResult {
   improvedAnswer: string;
+  whyItIsBetter?: string[];
 }

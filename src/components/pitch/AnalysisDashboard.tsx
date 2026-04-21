@@ -34,11 +34,19 @@ export function AnalysisDashboard({
           ) : null}
         </div>
         {feedback ? (
-          <ScoreMeters
-            clarity={feedback.clarity}
-            specificity={feedback.specificity}
-            strength={feedback.strength}
-          />
+          <>
+            <ScoreMeters
+              clarity={feedback.clarity}
+              specificity={feedback.specificity}
+              strength={feedback.strength}
+            />
+            {feedback.needsFollowup && feedback.followupReason ? (
+              <p className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] leading-snug text-amber-100/90">
+                <span className="font-semibold text-amber-200/90">Focus: </span>
+                {feedback.followupReason}
+              </p>
+            ) : null}
+          </>
         ) : (
           <p className="text-xs text-zinc-500">
             Submit an answer to see clarity, specificity, and strength scores.

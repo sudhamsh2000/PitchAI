@@ -58,6 +58,7 @@ export function PitchApp() {
   const setLastUserMessageId = usePitchStore((s) => s.setLastUserMessageId);
 
   const [rewriteBusy, setRewriteBusy] = useState(false);
+  const [rewriteNotes, setRewriteNotes] = useState<string[] | null>(null);
 
   const onFinalSpeech = useCallback((chunk: string) => {
     setDraft((d) => {
@@ -220,6 +221,7 @@ export function PitchApp() {
     setPhase("loading_feedback");
     setTyping(true);
     setError(null);
+    setRewriteNotes(null);
     try {
       const result = await coachEvaluate({
         mode: usePitchStore.getState().mode,
@@ -252,6 +254,7 @@ export function PitchApp() {
     setLastUserMessageId,
     setPhase,
     setRecording,
+    setRewriteNotes,
     setTyping,
     stashEvaluateResult,
     stopListening,
@@ -317,7 +320,7 @@ export function PitchApp() {
     setRewriteBusy(true);
     setError(null);
     try {
-      const { improvedAnswer } = await coachRewrite({
+      const { improvedAnswer, whyItIsBetter } = await coachRewrite({
         mode,
         pitchBrief: brief,
         userAnswer: userText,
@@ -326,6 +329,7 @@ export function PitchApp() {
       });
       if (uid) updateMessage(uid, improvedAnswer);
       setDraft(improvedAnswer);
+      setRewriteNotes(whyItIsBetter?.length ? whyItIsBetter : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Rewrite failed.");
     } finally {
@@ -334,6 +338,7 @@ export function PitchApp() {
   };
 
   const continueAfterReview = () => {
+    setRewriteNotes(null);
     commitPendingQuestion();
   };
 
@@ -465,9 +470,18 @@ export function PitchApp() {
       {phase === "review" && !liveSession ? (
         <div className="border-t border-white/10 bg-black/40 px-5 py-3">
           <div className="mx-auto flex max-w-6xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-zinc-400">
-              Review the scores, tighten your answer if needed, then continue to the next coach prompt.
-            </p>
+            <div className="space-y-2">
+              <p className="text-xs text-zinc-400">
+                Review the scores, tighten your answer if needed, then continue to the next coach prompt.
+              </p>
+              {rewriteNotes?.length ? (
+                <ul className="list-disc space-y-1 pl-4 text-[11px] text-cyan-100/80">
+                  {rewriteNotes.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"

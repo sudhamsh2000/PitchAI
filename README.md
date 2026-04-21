@@ -44,6 +44,18 @@ It runs guided pitch interviews, scores every answer, gives sharp investor-style
 - Zustand
 - OpenAI SDK
 
+## AI architecture (multi-agent, unified Friday)
+
+The app still presents **one** coach, **Friday**. Under the hood, `/api/coach` orchestrates modular agents in `src/lib/agents/`:
+
+- **evaluationAgent** — scores and critique for the latest answer (`needsFollowup` helps decide depth).
+- **interviewAgent** — Friday’s next spoken question (follow-up vs section advance vs session wrap-up).
+- **rewriteAgent** — improved answer plus “why it’s better” bullets.
+- **pitchComposerAgent** — final 30s / 1m / 3m scripts and deck bullets.
+- **orchestrator** — runs evaluation first, then applies NABC rules (about 2–4 probes per section, max 4) before advancing.
+
+Shared LLM helpers live in `src/lib/agents/llm-client.ts` (same OpenRouter/OpenAI behavior as before).
+
 ## Local Setup
 
 **Start the app with the development server every time you work locally.** From the project root run `npm run dev` (same as `npm run local`), then open [http://localhost:3000](http://localhost:3000). Do not use `npm start` for day-to-day work—that command is for production mode **after** `npm run build`.
