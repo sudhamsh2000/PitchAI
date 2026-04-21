@@ -58,12 +58,20 @@ Shared LLM helpers live in `src/lib/agents/llm-client.ts` (same OpenRouter/OpenA
 
 ## Local Setup
 
-**Start the app with the development server every time you work locally.** From the project root run `npm run dev` (same as `npm run local`), then open [http://localhost:3000](http://localhost:3000). Do not use `npm start` for day-to-day work—that command is for production mode **after** `npm run build`.
+**Day to day, always use the dev server:** `npm run dev` (or `npm run local`), then open [http://localhost:3000](http://localhost:3000).  
+`npm start` is only for **production mode after** `npm run build` (see [Verify, test, and ship](#verify-test-and-ship)).
+
+### 0) Clone the repository
+
+```bash
+git clone https://github.com/sudhamsh2000/PitchAI.git
+cd PitchAI
+```
 
 ### 1) Prerequisites
 
-- Node.js 20+ recommended
-- npm
+- **Node.js 20+** (LTS recommended)
+- **npm** (comes with Node)
 
 ### 2) Install dependencies
 
@@ -73,9 +81,15 @@ npm install
 
 ### 3) Configure environment variables
 
-Create either `.env.local` (recommended) or `.env` in the project root.
+Create either `.env.local` (recommended) or `.env` in the project root (same folder as `package.json`).
 
-You can use OpenRouter for chat, OpenAI for chat, or both.
+You can copy the template and edit:
+
+```bash
+cp .env.example .env.local
+```
+
+Then add real API keys. You can use **OpenRouter** for chat, **OpenAI** for chat, or both. At least one chat key is required for Friday to respond.
 
 #### Option A: OpenRouter for chat (recommended for low-cost/free routing)
 
@@ -162,6 +176,65 @@ Open:
 - Home: [http://localhost:3000](http://localhost:3000)
 - Setup + session: [http://localhost:3000/pitch](http://localhost:3000/pitch)
 
+If the UI looks outdated after pulling changes, restart the dev server and hard-refresh the browser (`Cmd+Shift+R` / `Ctrl+Shift+R`).
+
+## Verify, test, and ship
+
+Use this before opening a pull request or cutting a release.
+
+### Automated check (lint + production build)
+
+```bash
+npm run verify
+```
+
+This runs **`npm run lint`** then **`npm run build`**. Both must pass.
+
+### Clean build (clear Next.js cache)
+
+If you hit odd build or HMR issues:
+
+```bash
+rm -rf .next
+npm run verify
+```
+
+On Windows PowerShell you can use `Remove-Item -Recurse -Force .next` instead of `rm -rf .next`.
+
+### Run a production build locally (optional)
+
+```bash
+npm run build
+npm start
+```
+
+Then open [http://localhost:3000](http://localhost:3000). Stop the server with `Ctrl+C`.
+
+### Manual testing checklist
+
+| Step | What to check |
+| --- | --- |
+| 1 | **Home** (`/`) loads and CTA goes to `/pitch`. |
+| 2 | **Setup** — enter a short pitch brief, pick a mode, start session. |
+| 3 | **Coach** — Friday asks a question; you answer by **text** first (fastest sanity check). |
+| 4 | **Analysis** — after submit, scores and feedback bullets appear. |
+| 5 | **Continue** — next Friday message appears (review step in non-live mode). |
+| 6 | **Voice** — use Chrome or Edge; allow microphone. Optional: enable **Live session** for auto mic / auto submit. |
+| 7 | **Natural voice** — with Piper Docker running + `PIPER_TTS_URL` set, Friday should sound neural; otherwise browser TTS is used. |
+| 8 | **Final outputs** — complete NABC flow until finals generate; copy/export works. |
+
+### Optional: API smoke test (with keys configured)
+
+With **`npm run dev`** running, in another terminal:
+
+```bash
+curl -s -X POST http://localhost:3000/api/coach \
+  -H "Content-Type: application/json" \
+  -d '{"action":"start","mode":"investor","pitchBrief":"A short test product pitch."}'
+```
+
+You should get JSON with `assistantMessage` and `activeSection: "need"`. If you see an error about missing keys, fix `.env.local` and restart the dev server.
+
 ## How To Use
 
 1. Open `/pitch`
@@ -193,13 +266,15 @@ Open:
 | Command | Purpose |
 | --- | --- |
 | `npm run dev` or `npm run local` | **Local development** (Turbopack, hot reload). Use this daily. |
-| `npm run build` | Production build (CI / before deploy). |
-| `npm start` | Run the **production** server only after `npm run build` (not for normal dev). |
-| `npm run lint` | ESLint. |
+| `npm run verify` | **Lint + production build** — run before PRs / releases. |
+| `npm run build` | Production build only. |
+| `npm start` | Production server **after** `npm run build` (not for normal dev). |
+| `npm run lint` | ESLint only. |
 
 ```bash
 npm run dev
 npm run local
+npm run verify
 npm run build
 npm start
 npm run lint
