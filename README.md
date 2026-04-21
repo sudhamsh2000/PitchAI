@@ -46,6 +46,8 @@ It runs guided pitch interviews, scores every answer, gives sharp investor-style
 
 ## Local Setup
 
+**Start the app with the development server every time you work locally.** From the project root run `npm run dev` (same as `npm run local`), then open [http://localhost:3000](http://localhost:3000). Do not use `npm start` for day-to-day work—that command is for production mode **after** `npm run build`.
+
 ### 1) Prerequisites
 
 - Node.js 20+ recommended
@@ -132,10 +134,16 @@ If Piper is down/unavailable, the app falls back to:
 1) OpenAI TTS if `OPENAI_API_KEY` is set  
 2) Browser voice as last resort
 
-### 5) Run the app
+### 5) Start the dev server (every session)
 
 ```bash
 npm run dev
+```
+
+Equivalent alias:
+
+```bash
+npm run local
 ```
 
 Open:
@@ -170,10 +178,18 @@ Open:
 
 ## Scripts
 
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` or `npm run local` | **Local development** (Turbopack, hot reload). Use this daily. |
+| `npm run build` | Production build (CI / before deploy). |
+| `npm start` | Run the **production** server only after `npm run build` (not for normal dev). |
+| `npm run lint` | ESLint. |
+
 ```bash
 npm run dev
+npm run local
 npm run build
-npm run start
+npm start
 npm run lint
 ```
 
