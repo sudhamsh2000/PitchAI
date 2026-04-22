@@ -3,10 +3,11 @@ import {
   orchestrateEvaluateAndContinue,
   orchestrateFinalPitches,
   orchestrateRewrite,
+  orchestrateSessionReport,
   orchestrateStart,
 } from "@/lib/agents/orchestrator";
 import { createOpenAIClient, sanitizeErrorMessage, usingOpenRouter } from "@/lib/agents/llm-client";
-import type { NABCSection, PitchMode } from "@/types/pitch";
+import type { NABCSection, PitchMode, SessionFeedbackEntry } from "@/types/pitch";
 
 export const runtime = "nodejs";
 
@@ -79,6 +80,12 @@ export async function POST(req: Request) {
     if (action === "final_pitches") {
       const messages = body.messages as { role: "user" | "assistant"; content: string }[];
       const result = await orchestrateFinalPitches(openai, { mode, pitchBrief, messages });
+      return NextResponse.json(result);
+    }
+
+    if (action === "session_report") {
+      const entries = (body.entries as SessionFeedbackEntry[]) || [];
+      const result = await orchestrateSessionReport(openai, { mode, pitchBrief, entries });
       return NextResponse.json(result);
     }
 

@@ -64,7 +64,7 @@ export function FinalOutputPanel({
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-white/10 bg-[#07080b] p-5 shadow-2xl shadow-cyan-500/10"
+        className="max-h-[min(90dvh,calc(100dvh-2rem))] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-[#07080b] p-5 shadow-2xl shadow-cyan-500/10"
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>

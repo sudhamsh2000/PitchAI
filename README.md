@@ -29,11 +29,15 @@ It runs guided pitch interviews, scores every answer, gives sharp investor-style
   - Hackathon
   - Healthcare
   - Beginner
-- Live session mode (continuous flow)
-- Natural voice with free local Piper support (OpenAI fallback optional)
+- Live session mode (continuous flow, faster pause-to-submit, improved Web Speech handling)
+- **Live self-view** — small mirrored webcam preview during live sessions only (confidence / framing)
+- **End session** — full session analysis report (overall rating, averages, strengths, improvements, per-answer scores); saved locally on this device
+- **My analysis reports** — browse past reports from setup (same device, local storage)
+- Natural voice with free local Piper support (OpenAI fallback optional); client timeout prevents hung TTS requests
 - Friday persona (direct, investor-style, no fluff)
 - Circular live voice spectrum (neon ring style)
 - Auto turn-taking in live mode (prevents self-echo loops)
+- **UI** — viewport-stable layouts (home, setup, coaching); chat transcript scrolls inside the conversation column; setup keeps **Start pitch session** pinned while the form scrolls
 
 ## Tech Stack
 
@@ -52,9 +56,11 @@ The app still presents **one** coach, **Friday**. Under the hood, `/api/coach` o
 - **interviewAgent** — Friday’s next spoken question (follow-up vs section advance vs session wrap-up).
 - **rewriteAgent** — improved answer plus “why it’s better” bullets.
 - **pitchComposerAgent** — final 30s / 1m / 3m scripts and deck bullets.
-- **orchestrator** — runs evaluation first, then applies NABC rules (about 2–4 probes per section, max 4) before advancing.
+- **unifiedEvaluateContinue** (optional fast path) — single LLM call for evaluate + next question when JSON parses cleanly; falls back to evaluation + interview if needed.
+- **sessionReportAgent** — end-of-session narrative report from scored turns (`action: session_report`).
+- **orchestrator** — runs evaluation + next step (unified or two-step), NABC rules (about 2–4 probes per section, max 4) before advancing.
 
-Shared LLM helpers live in `src/lib/agents/llm-client.ts` (same OpenRouter/OpenAI behavior as before).
+Shared LLM helpers live in `src/lib/agents/llm-client.ts` (same OpenRouter/OpenAI behavior as before). Coach HTTP calls from the browser use **abort timeouts** so a stalled model does not freeze the UI indefinitely.
 
 ## Local Setup
 
@@ -158,7 +164,9 @@ OPENAI_TTS_VOICE=alloy
 
 If Piper is down/unavailable, the app falls back to:
 1) OpenAI TTS if `OPENAI_API_KEY` is set  
-2) Browser voice as last resort
+2) Browser voice as last resort  
+
+The browser aborts the `/api/tts` request after about **45 seconds** and then falls back so Friday’s voice does not block live mode indefinitely.
 
 ### 5) Start the dev server (every session)
 
@@ -219,9 +227,11 @@ Then open [http://localhost:3000](http://localhost:3000). Stop the server with `
 | 3 | **Coach** — Friday asks a question; you answer by **text** first (fastest sanity check). |
 | 4 | **Analysis** — after submit, scores and feedback bullets appear. |
 | 5 | **Continue** — next Friday message appears (review step in non-live mode). |
-| 6 | **Voice** — use Chrome or Edge; allow microphone. Optional: enable **Live session** for auto mic / auto submit. |
+| 6 | **Voice** — use Chrome or Edge; allow microphone. Optional: enable **Live session** for auto mic / auto submit. Safari: type answers or use Chrome for dictation. |
 | 7 | **Natural voice** — with Piper Docker running + `PIPER_TTS_URL` set, Friday should sound neural; otherwise browser TTS is used. |
-| 8 | **Final outputs** — complete NABC flow until finals generate; copy/export works. |
+| 8 | **Live self-view** — in live mode, confirm webcam preview appears (permission). |
+| 9 | **End session** — ends coaching, shows saved analysis report; reopen from setup via **Analysis reports**. |
+| 10 | **Final outputs** — complete NABC flow until finals generate; copy/export works. |
 
 ### Optional: API smoke test (with keys configured)
 
@@ -239,13 +249,15 @@ You should get JSON with `assistantMessage` and `activeSection: "need"`. If you 
 
 1. Open `/pitch`
 2. Fill pitch context (what you are building, customer, stage)
-3. Select a mode (Investor / Hackathon / Healthcare / Beginner)
-4. Optional: enable Live session
-5. Click **Start pitch session**
-6. Answer via voice or text
-7. Review scores + feedback
-8. Use rewrite helper when needed
-9. Generate final outputs and copy/export
+3. Optional: open **View my analysis reports** or **Analysis reports** (header) to review past session reports saved on this device
+4. Select a mode (Investor / Hackathon / Healthcare / Beginner)
+5. Optional: enable Live session (Chrome/Edge recommended for speech recognition)
+6. Click **Start pitch session** (button stays at the bottom of the screen on setup)
+7. Answer via voice or text
+8. Review scores + feedback
+9. Use **End session** anytime for a full report, or **Restart session** / **Change pitch idea** as needed
+10. Use rewrite helper when needed
+11. Generate final outputs and copy/export
 
 ## Notes for Contributors
 
@@ -257,9 +269,12 @@ You should get JSON with `assistantMessage` and `activeSection: "need"`. If you 
 ## Troubleshooting
 
 - `429 Provider returned error`: OpenRouter model is rate-limited. Wait 20-60 seconds or set a different `OPENROUTER_MODEL`; fallback models are supported via `OPENROUTER_FALLBACK_MODELS`.
+- **Start pitch session** spins forever / nothing happens: confirm `OPENROUTER_API_KEY` or `OPENAI_API_KEY` in `.env.local` and restart the dev server. Requests time out after a few minutes with a clear error instead of hanging silently.
 - Voice sounds robotic: verify Piper is running (`docker ps | grep pitchai-piper`). If not running, app falls back to browser voice.
 - Friday reads technical terms like voice/model/format: set `PIPER_TTS_URL=http://127.0.0.1:5002` and restart `npm run dev`.
 - Live mode hears itself: this is now guarded via turn-taking; if you still see it, hard refresh the app.
+- **Live mode feels stuck**: ensure Chrome or Edge (Web Speech API). Safari cannot dictate — type in the answer box. If natural voice hangs, the client falls back after ~45s.
+- Analysis reports missing on another device: reports are stored in **browser localStorage** only (not synced).
 
 ## Scripts
 

@@ -26,6 +26,7 @@ Follow-ups already asked in this section: ${params.followUpsAskedThisSection}.`;
 
   const completion = await createCoachCompletion(openai, {
     temperature: 0.35,
+    maxTokens: 520,
     messages: [
       { role: "system", content: system },
       ...params.messages.map((m) => ({ role: m.role, content: m.content })),

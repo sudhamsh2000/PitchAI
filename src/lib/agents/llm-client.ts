@@ -48,14 +48,23 @@ export async function createCoachCompletion(
   payload: {
     temperature: number;
     messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+    /** Caps latency from overly long generations (defaults unset = provider default). */
+    maxTokens?: number;
+    /** When true, requires a message that mentions JSON; OpenAI-compatible providers only. */
+    jsonObject?: boolean;
   },
 ) {
   const primary = modelName();
+  const baseBody = {
+    temperature: payload.temperature,
+    messages: payload.messages,
+    ...(payload.maxTokens != null ? { max_tokens: payload.maxTokens } : {}),
+    ...(payload.jsonObject ? { response_format: { type: "json_object" as const } } : {}),
+  };
   try {
     return await openai.chat.completions.create({
       model: primary,
-      temperature: payload.temperature,
-      messages: payload.messages,
+      ...baseBody,
     });
   } catch (e) {
     const status = Number((e as { status?: number })?.status || 0);
@@ -67,8 +76,7 @@ export async function createCoachCompletion(
       try {
         return await openai.chat.completions.create({
           model: fallback,
-          temperature: payload.temperature,
-          messages: payload.messages,
+          ...baseBody,
         });
       } catch (fallbackError) {
         lastError = fallbackError;

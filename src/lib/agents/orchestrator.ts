@@ -1,9 +1,11 @@
 import type OpenAI from "openai";
-import type { CoachEvaluateResult, NABCSection, PitchMode } from "@/types/pitch";
+import type { CoachEvaluateResult, NABCSection, PitchMode, SessionAnalysisReport, SessionFeedbackEntry } from "@/types/pitch";
 import { runEvaluationAgent } from "./evaluationAgent";
 import { runInterviewNext, runInterviewStart } from "./interviewAgent";
 import { runPitchComposerAgent } from "./pitchComposerAgent";
 import { runRewriteAgent } from "./rewriteAgent";
+import { runSessionReportAgent } from "./sessionReportAgent";
+import { runUnifiedEvaluateAndContinue } from "./unifiedEvaluateContinue";
 import type { ApiMsg } from "./types";
 
 const MIN_FOLLOWUPS_PER_SECTION = 2;
@@ -63,6 +65,9 @@ export async function orchestrateEvaluateAndContinue(
     userAnswer: string;
   },
 ): Promise<CoachEvaluateResult> {
+  const unified = await runUnifiedEvaluateAndContinue(openai, params);
+  if (unified) return unified;
+
   const evaluation = await runEvaluationAgent(openai, params);
   const followUps = params.followUpsAskedThisSection;
   const probe = shouldProbeSameSection(followUps, evaluation);
@@ -164,4 +169,25 @@ export async function orchestrateFinalPitches(
   params: { mode: PitchMode; pitchBrief: string; messages: ApiMsg[] },
 ) {
   return runPitchComposerAgent(openai, params);
+}
+
+export async function orchestrateSessionReport(
+  openai: OpenAI,
+  params: { mode: PitchMode; pitchBrief: string; entries: SessionFeedbackEntry[] },
+): Promise<SessionAnalysisReport> {
+  const body = await runSessionReportAgent(openai, params);
+  return {
+    id: crypto.randomUUID(),
+    createdAt: Date.now(),
+    pitchBrief: params.pitchBrief,
+    mode: params.mode,
+    entries: params.entries,
+    answerCount: params.entries.length,
+    averages: body.averages,
+    summary: body.summary,
+    topStrengths: body.topStrengths,
+    priorityImprovements: body.priorityImprovements,
+    overallLabel: body.overallLabel,
+    overallRating: body.overallRating,
+  };
 }

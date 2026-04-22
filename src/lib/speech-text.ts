@@ -1,3 +1,8 @@
+/** Light cleanup for Web Speech dictation chunks before appending to the answer. */
+export function normalizeDictationChunk(input: string) {
+  return input.replace(/\s+/g, " ").replace(/\bi\b/g, "I").trim();
+}
+
 export function normalizeForSpeech(input: string) {
   return input
     .replace(/```[\s\S]*?```/g, " ")

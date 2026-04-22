@@ -8,6 +8,7 @@ import type {
   PitchMessage,
   PitchMode,
   ScoreFeedback,
+  SessionFeedbackEntry,
 } from "@/types/pitch";
 
 type Phase = "idle" | "asking" | "loading_feedback" | "review" | "loading_final" | "final";
@@ -39,6 +40,8 @@ interface PitchState {
   error: string | null;
   finalPitches: FinalPitches | null;
   showFinal: boolean;
+  /** Accumulated scored turns for end-of-session report */
+  feedbackHistory: SessionFeedbackEntry[];
 
   setMode: (m: PitchMode) => void;
   setPitchBrief: (t: string) => void;
@@ -97,6 +100,7 @@ export const usePitchStore = create<PitchState>((set, get) => ({
   error: null,
   finalPitches: null,
   showFinal: false,
+  feedbackHistory: [],
 
   setMode: (m) => set({ mode: m }),
   setPitchBrief: (t) => set({ pitchBrief: t }),
@@ -119,6 +123,7 @@ export const usePitchStore = create<PitchState>((set, get) => ({
       error: null,
       finalPitches: null,
       showFinal: false,
+      feedbackHistory: [],
     }),
 
   returnToSetup: () =>
@@ -139,6 +144,7 @@ export const usePitchStore = create<PitchState>((set, get) => ({
       error: null,
       finalPitches: null,
       showFinal: false,
+      feedbackHistory: [],
     }),
 
   setInterimTranscript: (t) => set({ interimTranscript: t }),
@@ -168,6 +174,7 @@ export const usePitchStore = create<PitchState>((set, get) => ({
       error: null,
       finalPitches: null,
       showFinal: false,
+      feedbackHistory: [],
     }),
 
   appendMessage: (role, content) => {
@@ -205,19 +212,45 @@ export const usePitchStore = create<PitchState>((set, get) => ({
       pendingNext: null,
       pendingMeta: null,
       error: null,
+      feedbackHistory: [],
     }),
 
   stashEvaluateResult: (result) =>
-    set({
-      latestFeedback: result.feedback || emptyFeedback(),
-      pendingNext: result.assistantMessage?.trim() || null,
-      pendingMeta: {
-        activeSection: result.activeSection,
-        followUpsAskedThisSection: result.followUpsAskedThisSection ?? 0,
-        interviewComplete: Boolean(result.interviewComplete),
-      },
-      phase: "review",
-      error: null,
+    set((s) => {
+      const uid = s.lastUserMessageId;
+      const turn = uid ? s.messages.find((m) => m.id === uid) : null;
+      const userAnswer = turn?.role === "user" ? turn.content.trim() : "";
+      const fb = result.feedback || emptyFeedback();
+      let feedbackHistory = s.feedbackHistory;
+      if (userAnswer) {
+        const entry: SessionFeedbackEntry = {
+          id: newId(),
+          createdAt: Date.now(),
+          section: s.activeSection,
+          userAnswer,
+          feedback: {
+            clarity: fb.clarity,
+            specificity: fb.specificity,
+            strength: fb.strength,
+            bullets: fb.bullets ?? [],
+            needsFollowup: fb.needsFollowup,
+            followupReason: fb.followupReason,
+          },
+        };
+        feedbackHistory = [...feedbackHistory, entry];
+      }
+      return {
+        latestFeedback: fb,
+        pendingNext: result.assistantMessage?.trim() || null,
+        pendingMeta: {
+          activeSection: result.activeSection,
+          followUpsAskedThisSection: result.followUpsAskedThisSection ?? 0,
+          interviewComplete: Boolean(result.interviewComplete),
+        },
+        phase: "review",
+        error: null,
+        feedbackHistory,
+      };
     }),
 
   commitPendingQuestion: () => {

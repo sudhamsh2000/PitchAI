@@ -36,6 +36,8 @@ export function stopPremiumSpeech() {
   releaseAudio();
 }
 
+const TTS_FETCH_MS = 45_000;
+
 export async function speakPremiumText(
   text: string,
   options?: {
@@ -50,11 +52,20 @@ export async function speakPremiumText(
     if (!input) return false;
     releaseAudio();
 
-    const res = await fetch("/api/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: input, voice: options?.voice }),
-    });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TTS_FETCH_MS);
+
+    let res: Response;
+    try {
+      res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: input, voice: options?.voice }),
+        signal: ctrl.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!res.ok) {
       options?.onError?.(await parseError(res));
@@ -80,7 +91,13 @@ export async function speakPremiumText(
     await audio.play();
     return true;
   } catch (e) {
-    options?.onError?.(e instanceof Error ? e.message : "Natural voice playback failed.");
+    const msg =
+      e instanceof Error && e.name === "AbortError"
+        ? "Natural voice request timed out. Using browser voice instead."
+        : e instanceof Error
+          ? e.message
+          : "Natural voice playback failed.";
+    options?.onError?.(msg);
     return false;
   }
 }

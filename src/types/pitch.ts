@@ -44,3 +44,37 @@ export interface CoachRewriteResult {
   improvedAnswer: string;
   whyItIsBetter?: string[];
 }
+
+/** One scored answer during a coaching session (for end-of-session report). */
+export interface SessionFeedbackEntry {
+  id: string;
+  createdAt: number;
+  section: NABCSection;
+  userAnswer: string;
+  feedback: ScoreFeedback;
+}
+
+/** Full analysis shown when ending a session; also persisted for “My reports”. */
+export interface SessionAnalysisReport {
+  id: string;
+  createdAt: number;
+  pitchBrief: string;
+  mode: PitchMode;
+  /** Rolling averages across scored answers */
+  averages: {
+    clarity: number;
+    specificity: number;
+    strength: number;
+    overall: number;
+  };
+  answerCount: number;
+  entries: SessionFeedbackEntry[];
+  /** LLM-generated narrative */
+  summary: string;
+  topStrengths: string[];
+  priorityImprovements: string[];
+  /** Short label e.g. “Strong”, “Developing” */
+  overallLabel: string;
+  /** 1–10 holistic pitch readiness */
+  overallRating: number;
+}

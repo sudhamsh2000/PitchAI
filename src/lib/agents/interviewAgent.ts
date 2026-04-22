@@ -35,6 +35,7 @@ Do not use markdown.`;
 
   const completion = await createCoachCompletion(openai, {
     temperature: 0.65,
+    maxTokens: 420,
     messages: [
       { role: "system", content: system },
       {
@@ -88,6 +89,7 @@ Stay mode-aware. ONE main question (you may add one short clarifying clause). No
 
   const completion = await createCoachCompletion(openai, {
     temperature: 0.55,
+    maxTokens: 420,
     messages: [
       { role: "system", content: system },
       ...params.messages.map((m) => ({ role: m.role, content: m.content })),

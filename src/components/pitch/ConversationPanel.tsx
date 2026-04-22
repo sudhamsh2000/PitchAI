@@ -5,6 +5,7 @@ import type { PitchMessage } from "@/types/pitch";
 import { normalizeForSpeech } from "@/lib/speech-text";
 import { speakText, stopSpeaking } from "@/hooks/useVoice";
 import { speakPremiumText, stopPremiumSpeech } from "@/lib/tts-client";
+import { LiveSelfView } from "./LiveSelfView";
 
 export function ConversationPanel({
   messages,
@@ -24,8 +25,8 @@ export function ConversationPanel({
   naturalVoiceName?: string;
 }) {
   return (
-    <div className="flex h-full flex-col bg-black/20">
-      <div className="border-b border-white/10 px-5 py-4">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-black/20">
+      <div className="shrink-0 border-b border-white/10 px-5 py-4">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-white">Conversation</h2>
@@ -45,95 +46,104 @@ export function ConversationPanel({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
-        {liveSession || liveActive ? <CircularSpectrum active={Boolean(liveActive)} /> : null}
-        {messages.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-center">
-            <p className="text-xs text-zinc-500">Your coach question will appear here once the session starts.</p>
+      {liveSession || liveActive ? (
+        <div className="shrink-0 border-b border-white/5 px-5 pb-4 pt-3">
+          <div className="flex flex-wrap items-start justify-center gap-4">
+            <CircularSpectrum active={Boolean(liveActive)} />
+            <LiveSelfView active={Boolean(liveSession)} />
           </div>
-        ) : null}
-        <AnimatePresence initial={false}>
-          {messages.map((m) => (
-            <motion.div
-              key={m.id}
-              layout
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[92%] rounded-2xl border px-4 py-3 text-sm leading-relaxed shadow-lg ${
-                  m.role === "user"
-                    ? "border-cyan-500/20 bg-cyan-500/10 text-cyan-50"
-                    : "border-white/10 bg-white/[0.04] text-zinc-100"
-                }`}
+        </div>
+      ) : null}
+
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-5 py-4 [scrollbar-gutter:stable]">
+        <div className="space-y-3">
+          {messages.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-center">
+              <p className="text-xs text-zinc-500">Your coach question will appear here once the session starts.</p>
+            </div>
+          ) : null}
+          <AnimatePresence initial={false}>
+            {messages.map((m) => (
+              <motion.div
+                key={m.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
-                <div className="mb-1 flex items-center justify-between gap-3">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
-                    {m.role === "user" ? "You" : "Friday"}
-                  </span>
-                  {m.role === "assistant" ? (
-                    <button
-                      type="button"
-                      onClick={() => void (async () => {
-                        const spokenText = normalizeForSpeech(m.content);
-                        if (!spokenText) return;
-                        stopSpeaking();
-                        stopPremiumSpeech();
-                        if (naturalVoice) {
-                          const ok = await speakPremiumText(spokenText, {
-                            voice: naturalVoiceName,
-                          });
-                          if (!ok) speakText(spokenText);
-                        } else {
-                          speakText(spokenText);
-                        }
-                      })()}
-                      className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-zinc-200 hover:border-cyan-400/40"
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="h-3 w-3"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden
+                <div
+                  className={`max-w-[92%] rounded-2xl border px-4 py-3 text-sm leading-relaxed shadow-lg ${
+                    m.role === "user"
+                      ? "border-cyan-500/20 bg-cyan-500/10 text-cyan-50"
+                      : "border-white/10 bg-white/[0.04] text-zinc-100"
+                  }`}
+                >
+                  <div className="mb-1 flex items-center justify-between gap-3">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+                      {m.role === "user" ? "You" : "Friday"}
+                    </span>
+                    {m.role === "assistant" ? (
+                      <button
+                        type="button"
+                        onClick={() => void (async () => {
+                          const spokenText = normalizeForSpeech(m.content);
+                          if (!spokenText) return;
+                          stopSpeaking();
+                          stopPremiumSpeech();
+                          if (naturalVoice) {
+                            const ok = await speakPremiumText(spokenText, {
+                              voice: naturalVoiceName,
+                            });
+                            if (!ok) speakText(spokenText);
+                          } else {
+                            speakText(spokenText);
+                          }
+                        })()}
+                        className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-zinc-200 hover:border-cyan-400/40"
                       >
-                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-                      </svg>
-                      {naturalVoice ? "Play HD" : "Play"}
-                    </button>
-                  ) : null}
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-3 w-3"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden
+                        >
+                          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                          <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                        </svg>
+                        {naturalVoice ? "Play HD" : "Play"}
+                      </button>
+                    ) : null}
+                  </div>
+                  <p className="whitespace-pre-wrap">{m.content}</p>
                 </div>
-                <p className="whitespace-pre-wrap">{m.content}</p>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+
+          {typing ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex justify-start"
+            >
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-zinc-400">
+                <span className="inline-flex gap-1">
+                  <span className="animate-pulse">●</span>
+                  <span className="animation-delay-150 animate-pulse">●</span>
+                  <span className="animation-delay-300 animate-pulse">●</span>
+                </span>
               </div>
             </motion.div>
-          ))}
-        </AnimatePresence>
-
-        {typing ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex justify-start"
-          >
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-zinc-400">
-              <span className="inline-flex gap-1">
-                <span className="animate-pulse">●</span>
-                <span className="animation-delay-150 animate-pulse">●</span>
-                <span className="animation-delay-300 animate-pulse">●</span>
-              </span>
-            </div>
-          </motion.div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
       {interim ? (
-        <div className="border-t border-white/10 bg-black/30 px-5 py-3">
+        <div className="shrink-0 border-t border-white/10 bg-black/30 px-5 py-3">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
             Live transcript
           </p>
@@ -146,7 +156,7 @@ export function ConversationPanel({
 
 function CircularSpectrum({ active }: { active: boolean }) {
   return (
-    <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.02] py-5">
+    <div className="rounded-2xl border border-white/10 bg-white/[0.02] py-5">
       <div className="relative mx-auto h-40 w-40">
         <motion.div
           className="absolute inset-0 rounded-full bg-cyan-400/20 blur-2xl"

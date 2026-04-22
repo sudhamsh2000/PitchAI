@@ -18,15 +18,17 @@ export function AnalysisDashboard({
   complete: boolean;
 }) {
   return (
-    <aside className="flex h-full flex-col gap-5 border-l border-white/10 bg-black/30 p-5">
-      <div>
+    <aside className="flex h-auto min-h-0 w-full flex-col gap-5 overflow-hidden border-l border-white/10 bg-black/30 p-5 lg:h-full">
+      <div className="shrink-0">
         <h2 className="text-sm font-semibold text-white">Analysis</h2>
         <p className="mt-1 text-xs text-zinc-500">Investor-style signal, not cheerleading.</p>
       </div>
 
-      <NABCProgress active={section} complete={complete} />
+      <div className="shrink-0">
+        <NABCProgress active={section} complete={complete} />
+      </div>
 
-      <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+      <div className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] p-4">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-xs font-medium text-zinc-300">Scores</span>
           {typing ? (
@@ -54,9 +56,9 @@ export function AnalysisDashboard({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 rounded-xl border border-white/10 bg-white/[0.04] p-4">
-        <h3 className="text-xs font-medium text-zinc-300">Feedback</h3>
-        <div className="mt-3 space-y-2 text-sm leading-relaxed text-zinc-200">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] p-4">
+        <h3 className="shrink-0 text-xs font-medium text-zinc-300">Feedback</h3>
+        <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1 text-sm leading-relaxed text-zinc-200">
           <AnimatePresence mode="popLayout">
             {feedback?.bullets?.length ? (
               feedback.bullets.map((b, i) => (

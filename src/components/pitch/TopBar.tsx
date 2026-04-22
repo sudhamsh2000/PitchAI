@@ -13,6 +13,10 @@ export function TopBar({
   showEditPitch,
   disableMode,
   compact,
+  onEndSession,
+  endSessionBusy,
+  disableEndSession,
+  onOpenReports,
 }: {
   mode?: PitchMode;
   onModeChange?: (m: PitchMode) => void;
@@ -22,20 +26,36 @@ export function TopBar({
   disableMode?: boolean;
   /** Logo + home only (pitch context step) */
   compact?: boolean;
+  onEndSession?: () => void;
+  endSessionBusy?: boolean;
+  disableEndSession?: boolean;
+  /** Setup screen: open saved analysis reports */
+  onOpenReports?: () => void;
 }) {
   if (compact) {
     return (
-      <header className="flex items-center justify-between gap-4 border-b border-white/10 bg-black/20 px-5 py-3 backdrop-blur-xl">
+      <header className="flex shrink-0 items-center justify-between gap-4 border-b border-white/10 bg-black/20 px-5 py-3 backdrop-blur-xl">
         <Link href="/" className="text-sm font-semibold tracking-tight text-white">
           PITCH<span className="text-cyan-300">AI</span>
         </Link>
-        <span className="text-xs text-zinc-500">Setup</span>
+        <div className="flex items-center gap-3">
+          {onOpenReports ? (
+            <button
+              type="button"
+              onClick={onOpenReports}
+              className="text-xs font-medium text-cyan-300/90 hover:text-cyan-200"
+            >
+              Analysis reports
+            </button>
+          ) : null}
+          <span className="text-xs text-zinc-500">Setup</span>
+        </div>
       </header>
     );
   }
 
   return (
-    <header className="flex items-center justify-between gap-4 border-b border-white/10 bg-black/20 px-5 py-3 backdrop-blur-xl">
+    <header className="flex shrink-0 items-center justify-between gap-4 border-b border-white/10 bg-black/20 px-5 py-3 backdrop-blur-xl">
       <div className="flex items-center gap-3">
         <Link href="/" className="text-sm font-semibold tracking-tight text-white">
           PITCH<span className="text-cyan-300">AI</span>
@@ -68,6 +88,18 @@ export function TopBar({
             className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:border-cyan-400/40 hover:text-white"
           >
             Change pitch idea
+          </motion.button>
+        ) : null}
+
+        {onEndSession ? (
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.97 }}
+            disabled={disableEndSession || endSessionBusy}
+            onClick={onEndSession}
+            className="rounded-lg border border-rose-500/35 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-100 hover:border-rose-400/50 disabled:opacity-40"
+          >
+            {endSessionBusy ? "Ending…" : "End session"}
           </motion.button>
         ) : null}
 

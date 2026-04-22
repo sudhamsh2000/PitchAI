@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { normalizeDictationChunk } from "@/lib/speech-text";
 
 interface VoiceRecognition extends EventTarget {
   lang: string;
@@ -91,18 +92,28 @@ export function useVoice(
       rec.lang = "en-US";
       rec.continuous = true;
       rec.interimResults = true;
+      try {
+        (rec as unknown as { maxAlternatives?: number }).maxAlternatives = 1;
+      } catch {
+        /* optional */
+      }
 
       rec.onresult = (event: VoiceRecognitionEvent) => {
-        let interim = "";
-        let finalChunk = "";
+        let interimRaw = "";
+        for (let i = 0; i < event.results.length; i++) {
+          const res = event.results[i];
+          if (!res.isFinal) interimRaw += res[0]?.transcript ?? "";
+        }
+        const interim = normalizeDictationChunk(interimRaw);
+        if (interim) onInterim(interim);
+
+        let newFinalRaw = "";
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const res = event.results[i];
-          const piece = res[0]?.transcript || "";
-          if (res.isFinal) finalChunk += piece;
-          else interim += piece;
+          if (res.isFinal) newFinalRaw += res[0]?.transcript ?? "";
         }
-        if (interim) onInterim(interim);
-        if (finalChunk) onFinal(finalChunk);
+        const newFinal = normalizeDictationChunk(newFinalRaw);
+        if (newFinal) onFinal(newFinal);
       };
 
       rec.onerror = (event: Event) => {

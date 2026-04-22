@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePitchStore } from "@/store/usePitchStore";
-import { coachEvaluate, coachFinal, coachRewrite, coachStart } from "@/lib/coach-client";
+import { coachEvaluate, coachFinal, coachRewrite, coachSessionReport, coachStart } from "@/lib/coach-client";
+import { saveSessionReport } from "@/lib/saved-session-reports";
+import type { SessionAnalysisReport } from "@/types/pitch";
 import { PITCH_MODES } from "@/lib/modes";
-import { normalizeForSpeech } from "@/lib/speech-text";
+import { normalizeDictationChunk, normalizeForSpeech } from "@/lib/speech-text";
 import { speakText, stopSpeaking, useVoice } from "@/hooks/useVoice";
 import { speakPremiumText, stopPremiumSpeech } from "@/lib/tts-client";
 import { TopBar } from "./TopBar";
@@ -13,6 +15,8 @@ import { AnalysisDashboard } from "./AnalysisDashboard";
 import { BottomInput } from "./BottomInput";
 import { FinalOutputPanel } from "./FinalOutputPanel";
 import { SetupContextPanel } from "./SetupContextPanel";
+import { ReportsLibraryModal } from "./ReportsLibraryModal";
+import { SessionReportModal } from "./SessionReportModal";
 
 const MIN_BRIEF = 1;
 
@@ -59,11 +63,17 @@ export function PitchApp() {
 
   const [rewriteBusy, setRewriteBusy] = useState(false);
   const [rewriteNotes, setRewriteNotes] = useState<string[] | null>(null);
+  const [endSessionBusy, setEndSessionBusy] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [activeReport, setActiveReport] = useState<SessionAnalysisReport | null>(null);
+  const [reportModalKind, setReportModalKind] = useState<"end" | "library" | null>(null);
+  const reportSourceRef = useRef<"end" | "library" | null>(null);
 
   const onFinalSpeech = useCallback((chunk: string) => {
+    const t = normalizeDictationChunk(chunk);
+    if (!t) return;
     setDraft((d) => {
-      const t = chunk.trim();
-      if (!t) return d;
       const joiner = d && !/\s$/.test(d) ? " " : "";
       return `${d}${joiner}${t}`;
     });
@@ -120,7 +130,10 @@ export function PitchApp() {
   const speakCoach = useCallback(
     (text: string) => {
       const spokenText = normalizeForSpeech(text);
-      if (!spokenText) return;
+      if (!spokenText) {
+        setCoachSpeaking(false);
+        return;
+      }
       // Prevent Friday's own voice from being captured as user input.
       stopListening();
       setRecording(false);
@@ -129,12 +142,21 @@ export function PitchApp() {
       stopPremiumSpeech();
       setCoachSpeaking(true);
       void (async () => {
-        const ok = await speakPremiumText(spokenText, {
-          voice: naturalVoiceName,
-          onEnd: () => setCoachSpeaking(false),
-          onError: () => setCoachSpeaking(false),
-        });
-        if (!ok) {
+        try {
+          const ok = await speakPremiumText(spokenText, {
+            voice: naturalVoiceName,
+            onEnd: () => setCoachSpeaking(false),
+            onError: () => setCoachSpeaking(false),
+          });
+          if (!ok) {
+            speakText(
+              spokenText,
+              () => setCoachSpeaking(true),
+              () => setCoachSpeaking(false),
+            );
+          }
+        } catch {
+          setCoachSpeaking(false);
           speakText(
             spokenText,
             () => setCoachSpeaking(true),
@@ -235,7 +257,7 @@ export function PitchApp() {
       if (liveSession) {
         setTimeout(() => {
           commitPendingQuestion();
-        }, 650);
+        }, 320);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Evaluation failed.");
@@ -271,7 +293,7 @@ export function PitchApp() {
     liveAutoSubmitTimer.current = setTimeout(() => {
       liveAutoSubmitTimer.current = null;
       void submitAnswer();
-    }, isRecording ? 1300 : 180);
+    }, isRecording ? 720 : 120);
     return () => {
       if (liveAutoSubmitTimer.current) {
         clearTimeout(liveAutoSubmitTimer.current);
@@ -355,6 +377,66 @@ export function PitchApp() {
     await startCoachingSession();
   };
 
+  const closeReportModal = useCallback(() => {
+    const kind = reportSourceRef.current;
+    reportSourceRef.current = null;
+    setReportModalOpen(false);
+    setActiveReport(null);
+    setReportModalKind(null);
+    if (kind === "end") {
+      returnToSetup();
+      setDraft("");
+      setLastSpokenAssistantId(null);
+      setInterim("");
+      stopListening();
+      setRecording(false);
+      stopSpeaking();
+      stopPremiumSpeech();
+      setCoachSpeaking(false);
+    }
+  }, [returnToSetup, setInterim, setRecording, stopListening]);
+
+  const handleEndSession = useCallback(async () => {
+    if (
+      !window.confirm(
+        "End this session and generate your full analysis report? You can reopen saved reports from the setup screen.",
+      )
+    ) {
+      return;
+    }
+    stopSpeaking();
+    stopPremiumSpeech();
+    setCoachSpeaking(false);
+    setLastSpokenAssistantId(null);
+    stopListening();
+    setRecording(false);
+    setInterim("");
+    setDraft("");
+    if (liveAutoSubmitTimer.current) {
+      clearTimeout(liveAutoSubmitTimer.current);
+      liveAutoSubmitTimer.current = null;
+    }
+    setEndSessionBusy(true);
+    setError(null);
+    try {
+      const st = usePitchStore.getState();
+      const report = await coachSessionReport({
+        mode: st.mode,
+        pitchBrief: st.pitchBrief,
+        entries: st.feedbackHistory,
+      });
+      saveSessionReport(report);
+      setActiveReport(report);
+      reportSourceRef.current = "end";
+      setReportModalKind("end");
+      setReportModalOpen(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not generate session report.");
+    } finally {
+      setEndSessionBusy(false);
+    }
+  }, [setError, setInterim, setRecording, stopListening]);
+
   const onModeChange = async (m: typeof mode) => {
     if (m === mode) return;
     setMode(m);
@@ -390,32 +472,64 @@ export function PitchApp() {
     phase === "final" ||
     showFinal;
 
+  const reportModals = (
+    <>
+      <ReportsLibraryModal
+        open={libraryOpen}
+        onClose={() => setLibraryOpen(false)}
+        onOpenReport={(r) => {
+          setActiveReport(r);
+          setLibraryOpen(false);
+          reportSourceRef.current = "library";
+          setReportModalKind("library");
+          setReportModalOpen(true);
+        }}
+      />
+      <SessionReportModal
+        open={reportModalOpen}
+        report={activeReport}
+        title={reportModalKind === "end" ? "Session ended — your report" : "Analysis report"}
+        onClose={closeReportModal}
+      />
+    </>
+  );
+
   if (sessionPhase === "setup") {
     return (
-      <div className="flex min-h-[100dvh] flex-col bg-transparent text-zinc-100">
-        <TopBar compact />
-        <SetupContextPanel
-          mode={mode}
-          pitchBrief={pitchBrief}
-          onBriefChange={setPitchBrief}
-          onModeChange={setMode}
-          onStart={() => void beginFromSetup()}
-          liveSession={liveSession}
-          onLiveSessionChange={setLiveSession}
-          busy={setupBusy}
-          minChars={MIN_BRIEF}
-          error={error}
-        />
-      </div>
+      <>
+        <div className="flex h-full min-h-0 flex-col overflow-hidden bg-transparent text-zinc-100">
+          <TopBar compact onOpenReports={() => setLibraryOpen(true)} />
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <SetupContextPanel
+              mode={mode}
+              pitchBrief={pitchBrief}
+              onBriefChange={setPitchBrief}
+              onModeChange={setMode}
+              onStart={() => void beginFromSetup()}
+              liveSession={liveSession}
+              onLiveSessionChange={setLiveSession}
+              busy={setupBusy}
+              minChars={MIN_BRIEF}
+              error={error}
+              onViewReports={() => setLibraryOpen(true)}
+            />
+          </div>
+        </div>
+        {reportModals}
+      </>
     );
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-transparent text-zinc-100">
+    <>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-transparent text-zinc-100">
       <TopBar
         mode={mode}
         onModeChange={(m) => void onModeChange(m)}
         onRestart={() => void restartConversation()}
+        onEndSession={() => void handleEndSession()}
+        endSessionBusy={endSessionBusy}
+        disableEndSession={endSessionBusy}
         onEditPitch={() => {
           stopSpeaking();
           stopPremiumSpeech();
@@ -431,24 +545,34 @@ export function PitchApp() {
         showEditPitch
       />
 
-      <div className="border-b border-white/10 bg-white/[0.03] px-5 py-2.5">
+      <div className="shrink-0 border-b border-white/10 bg-white/[0.03] px-5 py-2.5">
         <p className="mx-auto max-w-6xl text-[11px] leading-relaxed text-zinc-400">
           <span className="font-semibold text-zinc-400">Your pitch context: </span>
           {pitchBrief.length > 220 ? `${pitchBrief.slice(0, 220)}…` : pitchBrief}
         </p>
       </div>
 
-      <div className="mx-auto grid w-full max-w-6xl flex-1 grid-cols-1 gap-0 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-0">
-        <ConversationPanel
-          messages={messages}
-          typing={isTyping}
-          interim={interimTranscript}
-          liveSession={liveSession}
-          liveActive={liveSession && isRecording}
-          naturalVoice
-          naturalVoiceName={naturalVoiceName}
-        />
-        <div className="hidden lg:block">
+      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:grid-rows-[minmax(0,1fr)] lg:gap-0">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:min-h-0 lg:h-full">
+          <ConversationPanel
+            messages={messages}
+            typing={isTyping}
+            interim={interimTranscript}
+            liveSession={liveSession}
+            liveActive={liveSession && isRecording}
+            naturalVoice
+            naturalVoiceName={naturalVoiceName}
+          />
+        </div>
+        <div className="hidden min-h-0 overflow-y-auto overscroll-contain lg:block lg:h-full lg:min-h-0">
+          <AnalysisDashboard
+            section={activeSection}
+            feedback={latestFeedback}
+            typing={isTyping}
+            complete={complete}
+          />
+        </div>
+        <div className="max-h-[38vh] min-h-0 shrink-0 overflow-y-auto overscroll-contain border-t border-white/10 lg:hidden">
           <AnalysisDashboard
             section={activeSection}
             feedback={latestFeedback}
@@ -458,17 +582,8 @@ export function PitchApp() {
         </div>
       </div>
 
-      <div className="lg:hidden">
-        <AnalysisDashboard
-          section={activeSection}
-          feedback={latestFeedback}
-          typing={isTyping}
-          complete={complete}
-        />
-      </div>
-
       {phase === "review" && !liveSession ? (
-        <div className="border-t border-white/10 bg-black/40 px-5 py-3">
+        <div className="shrink-0 border-t border-white/10 bg-black/40 px-5 py-3">
           <div className="mx-auto flex max-w-6xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-2">
               <p className="text-xs text-zinc-400">
@@ -503,26 +618,30 @@ export function PitchApp() {
         </div>
       ) : null}
 
-      <BottomInput
-        draft={draft}
-        onDraftChange={setDraft}
-        onSend={() => void submitAnswer()}
-        recording={isRecording}
-        onMicToggle={toggleMic}
-        micSupported={micSupported}
-        disabled={inputDisabled}
-        placeholder="Answer the coach’s question with specifics, numbers, and examples…"
-        modeNote={modeHint ? `Mode: ${modeHint}` : undefined}
-        liveSession={liveSession}
-      />
+      <div className="shrink-0">
+        <BottomInput
+          draft={draft}
+          onDraftChange={setDraft}
+          onSend={() => void submitAnswer()}
+          recording={isRecording}
+          onMicToggle={toggleMic}
+          micSupported={micSupported}
+          disabled={inputDisabled}
+          placeholder="Answer the coach’s question with specifics, numbers, and examples…"
+          modeNote={modeHint ? `Mode: ${modeHint}` : undefined}
+          liveSession={liveSession}
+        />
+      </div>
 
       {error ? (
-        <div className="border-t border-rose-500/20 bg-rose-500/10 px-5 py-2 text-center text-xs text-rose-100">
+        <div className="shrink-0 border-t border-rose-500/20 bg-rose-500/10 px-5 py-2 text-center text-xs text-rose-100">
           {error}
         </div>
       ) : null}
 
       <FinalOutputPanel open={showFinal} data={finalPitches} onClose={closeFinal} />
     </div>
+    {reportModals}
+    </>
   );
 }

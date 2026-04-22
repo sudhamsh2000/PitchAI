@@ -30,6 +30,12 @@ export function BottomInput({
   return (
     <div className="border-t border-white/10 bg-black/45 px-5 py-4 backdrop-blur-xl">
       <div className="mx-auto flex max-w-6xl flex-col gap-3">
+        {liveSession && !micSupported ? (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-100">
+            <span className="font-semibold text-amber-200">Live dictation isn’t available in this browser. </span>
+            Type your answer in the box (Chrome or Edge on desktop supports hands‑free live mode).
+          </div>
+        ) : null}
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
           <div className="flex min-w-0 flex-1 flex-col gap-2">
             <label className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
@@ -44,9 +50,9 @@ export function BottomInput({
               className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-zinc-100 outline-none ring-0 placeholder:text-zinc-600 focus:border-cyan-400/40"
             />
             {modeNote ? <p className="text-[11px] leading-relaxed text-zinc-500">{modeNote}</p> : null}
-            {liveSession ? (
+            {liveSession && micSupported ? (
               <p className="text-[11px] text-cyan-200/80">
-                Live mode is automatic: speak your answer and it submits when you pause.
+                Live mode: speak your answer; it submits after a short pause. Or type anytime.
               </p>
             ) : null}
           </div>
