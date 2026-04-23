@@ -18,6 +18,10 @@ import { SetupContextPanel } from "./SetupContextPanel";
 import { ReportsLibraryModal } from "./ReportsLibraryModal";
 import { SessionReportModal } from "./SessionReportModal";
 import { BackgroundBubbles } from "@/components/BackgroundBubbles";
+import {
+  SESSION_COUNTDOWN_GRACE_SECONDS,
+  budgetElapsedSeconds,
+} from "@/lib/session-timer";
 
 const MIN_BRIEF = 1;
 
@@ -194,7 +198,8 @@ export function PitchApp() {
         return;
       }
       const total = sessionLengthMinutes * 60;
-      const ratio = total > 0 ? elapsed / total : 0;
+      const budgetElapsed = budgetElapsedSeconds(elapsed);
+      const ratio = total > 0 ? budgetElapsed / total : 0;
       const nextPacing: SessionPacingMode = ratio >= 0.9 ? "urgent" : ratio >= 0.7 ? "compressed" : "normal";
       setPacingMode(nextPacing);
     }, 1000);
@@ -313,7 +318,7 @@ export function PitchApp() {
         userAnswer: text,
         feedbackHistory: usePitchStore.getState().feedbackHistory,
         sessionLengthMinutes: usePitchStore.getState().sessionLengthMinutes,
-        elapsedSeconds: usePitchStore.getState().elapsedSeconds,
+        elapsedSeconds: budgetElapsedSeconds(usePitchStore.getState().elapsedSeconds),
       });
       stashEvaluateResult(result);
       setTimeout(() => {
@@ -523,7 +528,7 @@ export function PitchApp() {
     if (sessionPhase !== "coaching" || !sessionStartedAt) return;
     if (sessionLengthMinutes === 0) return;
     const limitSec = sessionLengthMinutes * 60;
-    if (elapsedSeconds < limitSec) return;
+    if (budgetElapsedSeconds(elapsedSeconds) < limitSec) return;
     if (phase === "loading_feedback" || phase === "loading_final" || isTyping) return;
     void runSessionReportFlow("time");
   }, [
@@ -562,6 +567,19 @@ export function PitchApp() {
   };
 
   const modeHint = useMemo(() => PITCH_MODES.find((x) => x.id === mode)?.hint ?? "", [mode]);
+
+  /** Time left on the pitch clock (intro grace does not consume budget). */
+  const pitchBudgetRemainingSeconds = useMemo(() => {
+    if (sessionLengthMinutes === 0) return null;
+    const limitSec = sessionLengthMinutes * 60;
+    return Math.max(0, limitSec - budgetElapsedSeconds(elapsedSeconds));
+  }, [elapsedSeconds, sessionLengthMinutes]);
+
+  /** Seconds until the countdown starts (during Friday’s intro). */
+  const introGraceSecondsLeft = useMemo(() => {
+    if (sessionLengthMinutes === 0) return null;
+    return Math.max(0, SESSION_COUNTDOWN_GRACE_SECONDS - elapsedSeconds);
+  }, [elapsedSeconds, sessionLengthMinutes]);
 
   const toggleLivePause = useCallback(() => {
     if (!liveSession) return;
@@ -657,8 +675,9 @@ export function PitchApp() {
         liveSession={liveSession}
         livePaused={livePaused}
         onToggleLivePause={toggleLivePause}
-        remainingSeconds={
-          sessionLengthMinutes === 0 ? null : Math.max(0, sessionLengthMinutes * 60 - elapsedSeconds)
+        remainingSeconds={pitchBudgetRemainingSeconds}
+        introGraceSecondsLeft={
+          introGraceSecondsLeft != null && introGraceSecondsLeft > 0 ? introGraceSecondsLeft : null
         }
         pacingMode={pacingMode}
         onEditPitch={() => {

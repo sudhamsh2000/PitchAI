@@ -13,7 +13,7 @@ It runs guided pitch interviews, scores every answer, gives sharp investor-style
 ## Latest Update (Apr 2026)
 
 - Introduced an immersive **AI Interview Stage** session layout (central Friday orb + persistent analysis + compact transcript strip).
-- **Pitch session length**: choose **1 / 3 / 5 / 7 / 10 min**, **No limit** (practice, no countdown or auto-stop), or let the timer run out to **auto-end and open the session report**.
+- **Pitch session length**: choose **1 / 3 / 5 / 7 / 10 min**, **No limit** (practice, no countdown or auto-stop), or let the timer run out to **auto-end and open the session report**. The **countdown pauses for the first 15 seconds** after start so Friday’s intro does not use pitch time; total wall time for a 5-minute session is **5:15** max before auto-report.
 - Timed sessions steer **full NABC coverage** (Need → Approach → Benefits → Competition) within the clock; practice mode keeps depth without a timer.
 - Friday adapts follow-up depth and section moves using remaining time (`On track` / `Compressed` / `Urgent`) when a timer is set.
 - **Setup layout**: coach mode and session length share one compact card so the form fits on screen more comfortably.

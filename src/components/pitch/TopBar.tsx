@@ -21,6 +21,8 @@ export function TopBar({
   livePaused,
   onToggleLivePause,
   remainingSeconds,
+  /** While > 0, pitch countdown is paused during Friday’s intro (same wall clock as parent). */
+  introGraceSecondsLeft,
   pacingMode,
 }: {
   mode?: PitchMode;
@@ -41,6 +43,7 @@ export function TopBar({
   onToggleLivePause?: () => void;
   /** Omit or pass `null` for practice sessions with no countdown */
   remainingSeconds?: number | null;
+  introGraceSecondsLeft?: number | null;
   pacingMode?: SessionPacingMode;
 }) {
   const timed = remainingSeconds != null && Number.isFinite(remainingSeconds);
@@ -87,6 +90,11 @@ export function TopBar({
         }`}>
           {livePaused ? "Paused" : "Live"}
         </span>
+        {introGraceSecondsLeft != null && introGraceSecondsLeft > 0 ? (
+          <span className="hidden rounded-full border border-violet-300/55 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-800 sm:inline dark:border-violet-400/35 dark:bg-violet-500/12 dark:text-violet-100">
+            Intro · timer in {introGraceSecondsLeft}s
+          </span>
+        ) : null}
         {timed ? (
           <span className="hidden rounded-full border border-black/10 bg-white/70 px-2 py-0.5 text-[10px] font-mono font-semibold text-zinc-600 sm:inline dark:border-white/15 dark:bg-[#111722] dark:text-zinc-200">
             {timerLabel} left
@@ -96,7 +104,7 @@ export function TopBar({
             Practice · no timer
           </span>
         )}
-        {timed ? (
+        {timed && !(introGraceSecondsLeft != null && introGraceSecondsLeft > 0) ? (
           <span className="hidden rounded-full border border-black/10 bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-zinc-600 sm:inline dark:border-white/15 dark:bg-[#111722] dark:text-zinc-200">
             {pacingLabel}
           </span>
