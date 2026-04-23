@@ -39,11 +39,13 @@ export function TopBar({
   liveSession?: boolean;
   livePaused?: boolean;
   onToggleLivePause?: () => void;
-  remainingSeconds?: number;
+  /** Omit or pass `null` for practice sessions with no countdown */
+  remainingSeconds?: number | null;
   pacingMode?: SessionPacingMode;
 }) {
-  const mins = Math.floor((remainingSeconds || 0) / 60);
-  const secs = (remainingSeconds || 0) % 60;
+  const timed = remainingSeconds != null && Number.isFinite(remainingSeconds);
+  const mins = Math.floor(((remainingSeconds as number) || 0) / 60);
+  const secs = ((remainingSeconds as number) || 0) % 60;
   const timerLabel = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   const pacingLabel =
     pacingMode === "urgent" ? "Need to speed up" : pacingMode === "compressed" ? "Compressed mode" : "On track";
@@ -85,12 +87,20 @@ export function TopBar({
         }`}>
           {livePaused ? "Paused" : "Live"}
         </span>
-        <span className="hidden rounded-full border border-black/10 bg-white/70 px-2 py-0.5 text-[10px] font-mono font-semibold text-zinc-600 sm:inline dark:border-white/15 dark:bg-[#111722] dark:text-zinc-200">
-          {timerLabel} left
-        </span>
-        <span className="hidden rounded-full border border-black/10 bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-zinc-600 sm:inline dark:border-white/15 dark:bg-[#111722] dark:text-zinc-200">
-          {pacingLabel}
-        </span>
+        {timed ? (
+          <span className="hidden rounded-full border border-black/10 bg-white/70 px-2 py-0.5 text-[10px] font-mono font-semibold text-zinc-600 sm:inline dark:border-white/15 dark:bg-[#111722] dark:text-zinc-200">
+            {timerLabel} left
+          </span>
+        ) : (
+          <span className="hidden rounded-full border border-emerald-300/50 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 sm:inline dark:border-emerald-400/35 dark:bg-emerald-500/10 dark:text-emerald-100">
+            Practice · no timer
+          </span>
+        )}
+        {timed ? (
+          <span className="hidden rounded-full border border-black/10 bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-zinc-600 sm:inline dark:border-white/15 dark:bg-[#111722] dark:text-zinc-200">
+            {pacingLabel}
+          </span>
+        ) : null}
       </div>
 
       <div className="flex items-center gap-3">

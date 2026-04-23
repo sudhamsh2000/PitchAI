@@ -39,10 +39,15 @@ export async function runInterviewStart(
   params: { mode: PitchMode; pitchBrief: string; sessionLengthMinutes?: number },
 ): Promise<{ assistantMessage: string; activeSection: NABCSection }> {
   const modeLine = modeInstruction(params.mode);
+  const sm = params.sessionLengthMinutes ?? 5;
+  const budgetLine =
+    sm === 0
+      ? `Practice mode — no countdown. You still run the full NABC arc (Need → Approach → Benefits → Competition); prioritize clarity over racing the clock.`
+      : `Session budget is ${sm} minutes. Aim to touch all four NABC stages within that window—about a quarter of the time per stage as a loose guide—so nothing important is rushed at the end.`;
   const system = `${FRIDAY_INTERVIEW_SYSTEM}
 ${modeLine}
 ${founderContextBlock(params.pitchBrief)}
-Session budget is ${params.sessionLengthMinutes || 5} minutes.
+${budgetLine}
 You are starting the interview. Introduce yourself as Friday in ONE short sentence only (first session message).
 Then 1-2 sentences of expectations. Then ask ONE sharp first question about NEED only.
 Do not use markdown.`;
@@ -80,7 +85,12 @@ export async function runInterviewNext(
   const avg = (ev.clarity + ev.specificity + ev.strength) / 3;
 
   const memoryBlock = params.sessionMemory ? `\n${sessionMemoryPromptBlock(params.sessionMemory)}` : "";
-  const timeBlock = `\nSession budget: ${params.sessionLengthMinutes || 5} min. Remaining: ${Math.max(0, params.remainingSeconds || 0)} sec. Pacing mode: ${params.pacingMode || "normal"}.`;
+  const sm = params.sessionLengthMinutes ?? 5;
+  const timeBlock =
+    sm === 0
+      ? `\nPractice mode — no countdown. Still reach Need, Approach, Benefits, and Competition with solid depth before wrapping up.`
+      : `\nSession budget: ${sm} min. Remaining: ${Math.max(0, params.remainingSeconds ?? 0)} sec. Pacing mode: ${params.pacingMode || "normal"}.
+Timed sessions: keep all four NABC stages on track before time expires—about ~25% of clock per stage unless extra probes are clearly needed.`;
   const system = `${FRIDAY_INTERVIEW_SYSTEM}
 ${modeLine}
 ${founderContextBlock(params.pitchBrief)}${memoryBlock}${timeBlock}`;

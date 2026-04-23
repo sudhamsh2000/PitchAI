@@ -13,10 +13,15 @@ It runs guided pitch interviews, scores every answer, gives sharp investor-style
 ## Latest Update (Apr 2026)
 
 - Introduced an immersive **AI Interview Stage** session layout (central Friday orb + persistent analysis + compact transcript strip).
-- Added **Pitch session length** selection in setup (`1/3/5/7/10 min`) with time-aware pacing in coaching.
-- Friday now adapts follow-up depth/section transitions based on remaining time (`On track` / `Compressed` / `Urgent`).
-- Live flow is now the default operating mode, with pause/resume and improved stage cues.
-- Added report management improvement: delete individual saved reports from **My analysis reports**.
+- **Pitch session length**: choose **1 / 3 / 5 / 7 / 10 min**, **No limit** (practice, no countdown or auto-stop), or let the timer run out to **auto-end and open the session report**.
+- Timed sessions steer **full NABC coverage** (Need → Approach → Benefits → Competition) within the clock; practice mode keeps depth without a timer.
+- Friday adapts follow-up depth and section moves using remaining time (`On track` / `Compressed` / `Urgent`) when a timer is set.
+- **Setup layout**: coach mode and session length share one compact card so the form fits on screen more comfortably.
+- **Transcript** auto-scrolls to the latest messages during live coaching.
+- **Audio cleanup**: Friday’s voice stops when you return to setup, leave the page, or end the session (no stray TTS).
+- OpenRouter **503** uses the same model fallbacks as **429** where applicable; the API returns clearer guidance when the provider is temporarily unavailable.
+- Live flow remains the default, with pause/resume and improved stage cues.
+- Delete individual saved reports from **My analysis reports** when cleaning up.
 
 ## Core Features
 
@@ -38,7 +43,7 @@ It runs guided pitch interviews, scores every answer, gives sharp investor-style
   - Healthcare
   - Beginner
 - Live session is always on (continuous flow, faster pause-to-submit, improved Web Speech handling)
-- Session length control (1 / 3 / 5 / 7 / 10 min) with time-aware pacing (on-track / compressed / urgent)
+- Session length: **1 / 3 / 5 / 7 / 10 min**, **No limit** (practice), time-aware pacing when timed, optional **auto session end + report** when the timer expires
 - **Live self-view** — small mirrored webcam preview during live sessions only (confidence / framing)
 - **End session** — full session analysis report (overall rating, averages, strengths, improvements, per-answer scores); saved locally on this device
 - **My analysis reports** — browse past reports from setup (same device, local storage)
@@ -260,7 +265,7 @@ You should get JSON with `assistantMessage` and `activeSection: "need"`. If you 
 2. Fill pitch context (what you are building, customer, stage)
 3. Optional: open **View my analysis reports** or **Analysis reports** (header) to review past session reports saved on this device
 4. Select a mode (Investor / Hackathon / Healthcare / Beginner)
-5. Choose **Pitch session length** (1 / 3 / 5 / 7 / 10 min)
+5. Choose **session length** in the same card as coach mode: **No limit** (practice) or **1 / 3 / 5 / 7 / 10 min** (timed NABC pacing; session can auto-end with report when time is up)
 6. Click **Start pitch session** (button stays at the bottom of the screen on setup)
 7. Answer via voice or text (live flow auto-listens and auto-submits)
 8. Review scores + feedback in the persistent analysis panel
@@ -278,6 +283,7 @@ You should get JSON with `assistantMessage` and `activeSection: "need"`. If you 
 ## Troubleshooting
 
 - `429 Provider returned error`: OpenRouter model is rate-limited. Wait 20-60 seconds or set a different `OPENROUTER_MODEL`; fallback models are supported via `OPENROUTER_FALLBACK_MODELS`.
+- `503` / provider unavailable: wait and retry, set `OPENROUTER_FALLBACK_MODELS`, switch `OPENROUTER_MODEL`, or use `OPENAI_API_KEY` directly. OpenRouter fallbacks also retry on **503** when configured.
 - **Start pitch session** spins forever / nothing happens: confirm `OPENROUTER_API_KEY` or `OPENAI_API_KEY` in `.env.local` and restart the dev server. Requests time out after a few minutes with a clear error instead of hanging silently.
 - Voice sounds robotic: verify Piper is running (`docker ps | grep pitchai-piper`). If not running, app falls back to browser voice.
 - Friday reads technical terms like voice/model/format: set `PIPER_TTS_URL=http://127.0.0.1:5002` and restart `npm run dev`.

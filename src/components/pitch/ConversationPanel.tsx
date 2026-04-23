@@ -1,5 +1,6 @@
 "use client";
 
+import { useLayoutEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { PitchMessage } from "@/types/pitch";
 import { normalizeForSpeech } from "@/lib/speech-text";
@@ -26,8 +27,19 @@ export function ConversationPanel({
   naturalVoice?: boolean;
   naturalVoiceName?: string;
 }) {
+  const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const latestAssistant = [...messages].reverse().find((m) => m.role === "assistant");
   const transcriptMessages = messages.slice(-10);
+
+  useLayoutEffect(() => {
+    const el = transcriptScrollRef.current;
+    if (!el) return;
+    const scrollEnd = () => {
+      el.scrollTop = el.scrollHeight;
+    };
+    scrollEnd();
+    requestAnimationFrame(scrollEnd);
+  }, [messages, typing, interim]);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white/65 dark:bg-black/25">
@@ -66,7 +78,10 @@ export function ConversationPanel({
       ) : null}
 
       <div className="min-h-0 shrink-0 border-t border-black/10 bg-white/65 px-4 py-3 dark:border-white/10 dark:bg-black/20">
-        <div className="max-h-[22vh] min-h-[16vh] overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
+        <div
+          ref={transcriptScrollRef}
+          className="max-h-[22vh] min-h-[16vh] overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]"
+        >
           <div className="space-y-2">
             {messages.length === 0 ? (
               <div className="rounded-xl border border-dashed border-black/12 bg-white/60 px-4 py-4 text-center dark:border-white/10 dark:bg-white/[0.02]">

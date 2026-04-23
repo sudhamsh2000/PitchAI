@@ -68,7 +68,8 @@ export async function createCoachCompletion(
     });
   } catch (e) {
     const status = Number((e as { status?: number })?.status || 0);
-    if (!usingOpenRouter() || status !== 429) throw e;
+    /** OpenRouter often returns 429 (rate limit) or 503 (provider overload / unavailable). Retry fallbacks for both. */
+    if (!usingOpenRouter() || (status !== 429 && status !== 503)) throw e;
 
     let lastError: unknown = e;
     for (const fallback of fallbackModels()) {

@@ -27,7 +27,9 @@ export async function POST(req: Request) {
   const action = body.action as string;
   const mode = (body.mode as PitchMode) || "investor";
   const pitchBrief = String(body.pitchBrief || "");
-  const sessionLengthMinutes = Math.max(1, Math.min(30, Number(body.sessionLengthMinutes) || 5));
+  const rawLen = Number(body.sessionLengthMinutes);
+  const sessionLengthMinutes =
+    rawLen === 0 ? 0 : Math.max(1, Math.min(30, Number.isFinite(rawLen) ? rawLen : 5));
   const elapsedSeconds = Math.max(0, Number(body.elapsedSeconds) || 0);
 
   try {
@@ -115,6 +117,16 @@ export async function POST(req: Request) {
             : "OpenAI rate limit reached (429). Wait a moment and try again.",
         },
         { status: 429 },
+      );
+    }
+    if (status === 503) {
+      return NextResponse.json(
+        {
+          error: usingOpenRouter()
+            ? "The AI provider is temporarily unavailable (503). Wait a minute and retry, set OPENROUTER_FALLBACK_MODELS in .env.local, or switch OPENROUTER_MODEL (e.g. openai/gpt-4o-mini). You can also use OPENAI_API_KEY directly without OpenRouter."
+            : "OpenAI returned a temporary error (503). Retry shortly or check status.openai.com.",
+        },
+        { status: 503 },
       );
     }
     const message = e instanceof Error ? sanitizeErrorMessage(e.message) : "Coach error";

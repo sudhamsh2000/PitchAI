@@ -119,7 +119,11 @@ export const usePitchStore = create<PitchState>((set, get) => ({
 
   setMode: (m) => set({ mode: m }),
   setPitchBrief: (t) => set({ pitchBrief: t }),
-  setSessionLengthMinutes: (m) => set({ sessionLengthMinutes: Math.max(1, Math.min(30, Math.round(m || 1))) }),
+  setSessionLengthMinutes: (m) =>
+    set({
+      /** 0 = practice / no countdown; otherwise 1–30 minutes */
+      sessionLengthMinutes: m === 0 ? 0 : Math.max(1, Math.min(30, Math.round(m || 1))),
+    }),
   beginSessionClock: () => set({ sessionStartedAt: Date.now(), elapsedSeconds: 0, pacingMode: "normal" }),
   setElapsedSeconds: (s) => set({ elapsedSeconds: Math.max(0, Math.floor(s)) }),
   setPacingMode: (p) => set({ pacingMode: p }),

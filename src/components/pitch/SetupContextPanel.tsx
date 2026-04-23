@@ -31,11 +31,12 @@ export function SetupContextPanel({
 }) {
   const ready = pitchBrief.trim().length >= minChars;
   const lengthOptions = [1, 3, 5, 7, 10];
+  const practiceSelected = sessionLengthMinutes === 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden text-zinc-800 dark:text-zinc-100">
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-2 pt-3 sm:px-5 sm:pt-4">
-        <div className="mx-auto flex w-full max-w-4xl flex-col gap-3 sm:gap-4">
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-2.5 sm:gap-3">
           {error ? (
             <div className="sticky top-0 z-10 rounded-lg border border-rose-400/45 bg-rose-50/95 px-3 py-2.5 text-xs leading-snug text-rose-700 shadow-lg backdrop-blur-sm dark:border-rose-500/35 dark:bg-rose-950/95 dark:text-rose-50">
               {error}
@@ -62,7 +63,7 @@ export function SetupContextPanel({
             </motion.div>
           </div>
 
-          <div className="rounded-xl border border-black/10 bg-white/72 p-3 shadow-[0_8px_24px_rgba(0,0,0,0.08)] dark:border-white/12 dark:bg-[rgba(12,16,24,0.76)] dark:shadow-[0_12px_28px_rgba(0,0,0,0.42)] sm:p-4">
+          <div className="rounded-xl border border-black/10 bg-white/72 p-3 shadow-[0_8px_24px_rgba(0,0,0,0.08)] dark:border-white/12 dark:bg-[rgba(12,16,24,0.76)] dark:shadow-[0_12px_28px_rgba(0,0,0,0.42)] sm:p-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-base font-semibold tracking-tight text-zinc-900 dark:text-white sm:text-lg">Set up your pitch session</h2>
               <span
@@ -94,74 +95,96 @@ export function SetupContextPanel({
             ) : null}
           </div>
 
-          <label className="flex min-h-0 flex-col gap-1.5 rounded-xl border border-black/10 bg-white/72 p-3 dark:border-white/12 dark:bg-[rgba(12,16,24,0.76)] sm:p-4">
+          <label className="flex min-h-0 flex-col gap-1 rounded-xl border border-black/10 bg-white/72 p-3 dark:border-white/12 dark:bg-[rgba(12,16,24,0.76)] sm:p-3.5">
             <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-300">Pitch context</span>
             <span className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-300/90">
-              Paste context here (you can expand the box — it scrolls inside).
-            </span>
-            <span className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-300/90">
-              Tip: use your favorite LLM to generate a first draft, then refine it here.
+              Paste context — expand if needed; scrolls inside the box.
             </span>
             <textarea
               value={pitchBrief}
               onChange={(e) => onBriefChange(e.target.value)}
-              rows={4}
+              rows={3}
               disabled={busy}
               placeholder={`Example: "B2B SaaS for dental clinics that automates insurance claims. We're pre-seed, 4 pilots, $400 ARPU…"`}
-              className="max-h-[min(220px,32svh)] min-h-[88px] w-full resize-y overflow-y-auto rounded-lg border border-black/10 bg-zinc-50 px-2.5 py-2 text-sm text-zinc-800 outline-none placeholder:text-zinc-500 focus:border-sky-500/35 dark:border-white/12 dark:bg-[#0a0e16] dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-sky-300/45"
+              className="max-h-[min(180px,28svh)] min-h-[72px] w-full resize-y overflow-y-auto rounded-lg border border-black/10 bg-zinc-50 px-2.5 py-2 text-sm text-zinc-800 outline-none placeholder:text-zinc-500 focus:border-sky-500/35 dark:border-white/12 dark:bg-[#0a0e16] dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-sky-300/45"
             />
             <span className={`text-[10px] ${ready ? "text-emerald-600 dark:text-emerald-300/80" : "text-zinc-500 dark:text-zinc-500"}`}>
               {pitchBrief.trim().length}/{minChars}+ characters to start
             </span>
           </label>
 
-          <div className="grid gap-2 sm:grid-cols-2">
-            {PITCH_MODES.map((m) => {
-              const active = m.id === mode;
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onModeChange(m.id)}
-                  className={`rounded-lg border px-2.5 py-2 text-left transition sm:px-3 sm:py-2.5 ${
-                    active
-                      ? "border-sky-400/45 bg-gradient-to-r from-sky-100 to-pink-100/55 text-zinc-900 dark:border-sky-300/40 dark:bg-gradient-to-r dark:from-sky-400/10 dark:to-pink-400/10 dark:text-sky-100"
-                      : "border-black/10 bg-zinc-100/85 hover:border-sky-300/35 dark:border-white/10 dark:bg-[#111722] dark:hover:border-sky-300/25"
-                  }`}
-                >
-                  <p className={`text-[11px] font-semibold sm:text-xs ${active ? "text-sky-700 dark:text-sky-100" : "text-zinc-700 dark:text-zinc-200"}`}>
-                    {m.label}
-                  </p>
-                  <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-zinc-500 dark:text-zinc-300 sm:line-clamp-none">{m.hint}</p>
-                </button>
-              );
-            })}
-          </div>
+          <div className="rounded-xl border border-black/10 bg-white/72 p-3 shadow-[0_6px_20px_rgba(0,0,0,0.06)] dark:border-white/12 dark:bg-[rgba(12,16,24,0.76)] sm:p-3.5">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-300">
+                Coach mode & session length
+              </p>
+              <p className="hidden max-w-[18rem] text-[10px] leading-snug text-zinc-400 sm:inline dark:text-zinc-500">
+                Pick a mode, then duration (timed NABC vs practice).
+              </p>
+            </div>
 
-          <div className="rounded-lg border border-black/10 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-[#111722]">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-300">
-              Pitch session length
-            </p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {lengthOptions.map((minutes) => {
-                const active = minutes === sessionLengthMinutes;
+            <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
+              {PITCH_MODES.map((m) => {
+                const active = m.id === mode;
                 return (
                   <button
-                    key={minutes}
+                    key={m.id}
                     type="button"
                     disabled={busy}
-                    onClick={() => onSessionLengthChange(minutes)}
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                    onClick={() => onModeChange(m.id)}
+                    className={`rounded-lg border px-2.5 py-1.5 text-left transition sm:px-3 sm:py-2 ${
                       active
-                        ? "border-sky-400/45 bg-sky-100 text-sky-700 dark:border-sky-300/40 dark:bg-sky-400/15 dark:text-sky-100"
-                        : "border-black/10 bg-zinc-100 text-zinc-600 hover:border-sky-300/35 dark:border-white/10 dark:bg-black/20 dark:text-zinc-300"
+                        ? "border-sky-400/45 bg-gradient-to-r from-sky-100 to-pink-100/55 text-zinc-900 dark:border-sky-300/40 dark:bg-gradient-to-r dark:from-sky-400/10 dark:to-pink-400/10 dark:text-sky-100"
+                        : "border-black/10 bg-zinc-100/85 hover:border-sky-300/35 dark:border-white/10 dark:bg-[#111722] dark:hover:border-sky-300/25"
                     }`}
                   >
-                    {minutes} min
+                    <p className={`text-[11px] font-semibold sm:text-xs ${active ? "text-sky-700 dark:text-sky-100" : "text-zinc-700 dark:text-zinc-200"}`}>
+                      {m.label}
+                    </p>
+                    <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-zinc-500 dark:text-zinc-300">{m.hint}</p>
                   </button>
                 );
               })}
+            </div>
+
+            <div className="mt-3 border-t border-black/10 pt-3 dark:border-white/10">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Time
+                </span>
+                <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onSessionLengthChange(0)}
+                    className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold transition ${
+                      practiceSelected
+                        ? "border-emerald-400/45 bg-emerald-50 text-emerald-800 dark:border-emerald-400/35 dark:bg-emerald-500/15 dark:text-emerald-100"
+                        : "border-black/10 bg-zinc-100 text-zinc-600 hover:border-emerald-300/40 dark:border-white/10 dark:bg-black/20 dark:text-zinc-300"
+                    }`}
+                  >
+                    No limit
+                  </button>
+                  {lengthOptions.map((minutes) => {
+                    const active = minutes === sessionLengthMinutes;
+                    return (
+                      <button
+                        key={minutes}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => onSessionLengthChange(minutes)}
+                        className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold transition ${
+                          active
+                            ? "border-sky-400/45 bg-sky-100 text-sky-700 dark:border-sky-300/40 dark:bg-sky-400/15 dark:text-sky-100"
+                            : "border-black/10 bg-zinc-100 text-zinc-600 hover:border-sky-300/35 dark:border-white/10 dark:bg-black/20 dark:text-zinc-300"
+                        }`}
+                      >
+                        {minutes} min
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
 

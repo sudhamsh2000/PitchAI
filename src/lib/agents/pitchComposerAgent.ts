@@ -35,8 +35,8 @@ export async function runPitchComposerAgent(
 ${modeLine}
 ${founderContextBlock(params.pitchBrief)}
 You compose final investor-ready scripts from the conversation. Ground every claim in what the founder actually said; do not invent traction numbers they did not provide.
-Session budget was ${params.sessionLengthMinutes || 5} minutes. If budget <= 3 minutes, prioritize concise, practical 30s/1m outputs and keep 3m compact.
-If budget >= 7 minutes, allow fuller detail and richer 3m structure.
+${(params.sessionLengthMinutes ?? 5) === 0 ? `Practice session (no fixed timer). Compose investor-ready scripts from what they shared.` : `Session budget was ${params.sessionLengthMinutes ?? 5} minutes. If budget <= 3 minutes, prioritize concise, practical 30s/1m outputs and keep 3m compact.
+If budget >= 7 minutes, allow fuller detail and richer 3m structure.`}
 Use these strongest refined answers as primary source material:
 ${strongestBlock}`;
 

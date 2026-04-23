@@ -80,7 +80,9 @@ export function PitchApp() {
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [activeReport, setActiveReport] = useState<SessionAnalysisReport | null>(null);
   const [reportModalKind, setReportModalKind] = useState<"end" | "library" | null>(null);
+  const [reportEndCause, setReportEndCause] = useState<"manual" | "time">("manual");
   const reportSourceRef = useRef<"end" | "library" | null>(null);
+  const sessionReportFlowLockRef = useRef(false);
 
   const onFinalSpeech = useCallback((chunk: string) => {
     const t = normalizeDictationChunk(chunk);
@@ -187,6 +189,10 @@ export function PitchApp() {
     const id = setInterval(() => {
       const elapsed = Math.max(0, Math.floor((Date.now() - sessionStartedAt) / 1000));
       setElapsedSeconds(elapsed);
+      if (sessionLengthMinutes === 0) {
+        setPacingMode("normal");
+        return;
+      }
       const total = sessionLengthMinutes * 60;
       const ratio = total > 0 ? elapsed / total : 0;
       const nextPacing: SessionPacingMode = ratio >= 0.9 ? "urgent" : ratio >= 0.7 ? "compressed" : "normal";
@@ -196,13 +202,29 @@ export function PitchApp() {
   }, [sessionLengthMinutes, sessionPhase, sessionStartedAt, setElapsedSeconds, setPacingMode]);
 
   useEffect(() => {
+    return () => {
+      stopSpeaking();
+      stopPremiumSpeech();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (sessionPhase !== "setup") return;
+    stopSpeaking();
+    stopPremiumSpeech();
+    setCoachSpeaking(false);
+    setLastSpokenAssistantId(null);
+  }, [sessionPhase]);
+
+  useEffect(() => {
+    if (sessionPhase !== "coaching") return;
     if (!liveSession) return;
     const last = messages[messages.length - 1];
     if (!last || last.role !== "assistant") return;
     if (last.id === lastSpokenAssistantId) return;
     setLastSpokenAssistantId(last.id);
     speakCoach(last.content);
-  }, [liveSession, lastSpokenAssistantId, messages, speakCoach]);
+  }, [sessionPhase, liveSession, lastSpokenAssistantId, messages, speakCoach]);
 
   useEffect(() => {
     if (sessionPhase !== "coaching") return;
@@ -427,6 +449,7 @@ export function PitchApp() {
     setReportModalOpen(false);
     setActiveReport(null);
     setReportModalKind(null);
+    setReportEndCause("manual");
     if (kind === "end") {
       returnToSetup();
       setDraft("");
@@ -442,6 +465,49 @@ export function PitchApp() {
     }
   }, [clearSessionClock, returnToSetup, setInterim, setRecording, stopListening]);
 
+  const runSessionReportFlow = useCallback(
+    async (cause: "manual" | "time") => {
+      if (sessionReportFlowLockRef.current) return;
+      sessionReportFlowLockRef.current = true;
+      stopSpeaking();
+      stopPremiumSpeech();
+      setCoachSpeaking(false);
+      setLastSpokenAssistantId(null);
+      stopListening();
+      setRecording(false);
+      setInterim("");
+      setDraft("");
+      setLivePaused(false);
+      clearSessionClock();
+      if (liveAutoSubmitTimer.current) {
+        clearTimeout(liveAutoSubmitTimer.current);
+        liveAutoSubmitTimer.current = null;
+      }
+      setEndSessionBusy(true);
+      setError(null);
+      setReportEndCause(cause);
+      try {
+        const st = usePitchStore.getState();
+        const report = await coachSessionReport({
+          mode: st.mode,
+          pitchBrief: st.pitchBrief,
+          entries: st.feedbackHistory,
+        });
+        saveSessionReport(report);
+        setActiveReport(report);
+        reportSourceRef.current = "end";
+        setReportModalKind("end");
+        setReportModalOpen(true);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not generate session report.");
+      } finally {
+        setEndSessionBusy(false);
+        sessionReportFlowLockRef.current = false;
+      }
+    },
+    [clearSessionClock, setError, setInterim, setRecording, stopListening],
+  );
+
   const handleEndSession = useCallback(async () => {
     if (
       !window.confirm(
@@ -450,40 +516,25 @@ export function PitchApp() {
     ) {
       return;
     }
-    stopSpeaking();
-    stopPremiumSpeech();
-    setCoachSpeaking(false);
-    setLastSpokenAssistantId(null);
-    stopListening();
-    setRecording(false);
-    setInterim("");
-    setDraft("");
-    setLivePaused(false);
-    clearSessionClock();
-    if (liveAutoSubmitTimer.current) {
-      clearTimeout(liveAutoSubmitTimer.current);
-      liveAutoSubmitTimer.current = null;
-    }
-    setEndSessionBusy(true);
-    setError(null);
-    try {
-      const st = usePitchStore.getState();
-      const report = await coachSessionReport({
-        mode: st.mode,
-        pitchBrief: st.pitchBrief,
-        entries: st.feedbackHistory,
-      });
-      saveSessionReport(report);
-      setActiveReport(report);
-      reportSourceRef.current = "end";
-      setReportModalKind("end");
-      setReportModalOpen(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not generate session report.");
-    } finally {
-      setEndSessionBusy(false);
-    }
-  }, [clearSessionClock, setError, setInterim, setRecording, stopListening]);
+    await runSessionReportFlow("manual");
+  }, [runSessionReportFlow]);
+
+  useEffect(() => {
+    if (sessionPhase !== "coaching" || !sessionStartedAt) return;
+    if (sessionLengthMinutes === 0) return;
+    const limitSec = sessionLengthMinutes * 60;
+    if (elapsedSeconds < limitSec) return;
+    if (phase === "loading_feedback" || phase === "loading_final" || isTyping) return;
+    void runSessionReportFlow("time");
+  }, [
+    elapsedSeconds,
+    isTyping,
+    phase,
+    runSessionReportFlow,
+    sessionLengthMinutes,
+    sessionPhase,
+    sessionStartedAt,
+  ]);
 
   const onModeChange = async (m: typeof mode) => {
     if (m === mode) return;
@@ -553,7 +604,13 @@ export function PitchApp() {
       <SessionReportModal
         open={reportModalOpen}
         report={activeReport}
-        title={reportModalKind === "end" ? "Session ended — your report" : "Analysis report"}
+        title={
+          reportModalKind === "end"
+            ? reportEndCause === "time"
+              ? "Time's up — your report"
+              : "Session ended — your report"
+            : "Analysis report"
+        }
         onClose={closeReportModal}
       />
     </>
@@ -600,7 +657,9 @@ export function PitchApp() {
         liveSession={liveSession}
         livePaused={livePaused}
         onToggleLivePause={toggleLivePause}
-        remainingSeconds={Math.max(0, sessionLengthMinutes * 60 - elapsedSeconds)}
+        remainingSeconds={
+          sessionLengthMinutes === 0 ? null : Math.max(0, sessionLengthMinutes * 60 - elapsedSeconds)
+        }
         pacingMode={pacingMode}
         onEditPitch={() => {
           stopSpeaking();

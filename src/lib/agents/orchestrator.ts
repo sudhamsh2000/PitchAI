@@ -17,6 +17,12 @@ function pacingFromTime(sessionLengthMinutes: number, elapsedSeconds: number): S
   return "normal";
 }
 
+function resolveSessionLengthMinutes(raw?: number): { minutes: number; timed: boolean } {
+  if (raw === undefined || raw === null) return { minutes: 5, timed: true };
+  if (raw === 0) return { minutes: 0, timed: false };
+  return { minutes: Math.max(1, Math.min(30, raw)), timed: true };
+}
+
 function followupCapsForPacing(pacing: SessionPacingMode) {
   if (pacing === "urgent") return { min: 0, max: 1 };
   if (pacing === "compressed") return { min: 0, max: 1 };
@@ -82,10 +88,10 @@ export async function orchestrateEvaluateAndContinue(
     elapsedSeconds?: number;
   },
 ): Promise<CoachEvaluateResult> {
-  const sessionLength = params.sessionLengthMinutes || 5;
+  const { minutes: sessionLength, timed: timedSession } = resolveSessionLengthMinutes(params.sessionLengthMinutes);
   const elapsed = params.elapsedSeconds || 0;
-  const pacingMode = pacingFromTime(sessionLength, elapsed);
-  const remainingSeconds = Math.max(0, sessionLength * 60 - elapsed);
+  const pacingMode = timedSession ? pacingFromTime(sessionLength, elapsed) : "normal";
+  const remainingSeconds = timedSession ? Math.max(0, sessionLength * 60 - elapsed) : 0;
   const sessionMemory = buildSessionMemory({
     pitchBrief: params.pitchBrief,
     mode: params.mode,
@@ -97,6 +103,7 @@ export async function orchestrateEvaluateAndContinue(
     sessionMemory,
     pacingMode,
     sessionLengthMinutes: sessionLength,
+    timedSession,
     elapsedSeconds: elapsed,
     remainingSeconds,
   });

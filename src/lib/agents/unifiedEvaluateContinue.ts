@@ -76,6 +76,8 @@ export async function runUnifiedEvaluateAndContinue(
     userAnswer: string;
     sessionMemory?: SessionMemory;
     sessionLengthMinutes?: number;
+    /** false when sessionLengthMinutes is 0 (practice / no timer) */
+    timedSession?: boolean;
     elapsedSeconds?: number;
     remainingSeconds?: number;
     pacingMode?: SessionPacingMode;
@@ -87,6 +89,12 @@ export async function runUnifiedEvaluateAndContinue(
   const maxFollowups = pacing === "normal" ? MAX_FOLLOWUPS_PER_SECTION : 1;
   const minFollowups = pacing === "normal" ? MIN_FOLLOWUPS_PER_SECTION : 0;
   const memoryBlock = params.sessionMemory ? `\n${sessionMemoryPromptBlock(params.sessionMemory)}` : "";
+  const sm = params.sessionLengthMinutes ?? 5;
+  const timed = params.timedSession ?? sm > 0;
+  const timeBudgetLine = timed
+    ? `- Time budget = ${sm} min, elapsed = ${params.elapsedSeconds || 0}s, remaining = ${params.remainingSeconds ?? 0}s, pacing = ${params.pacingMode || "normal"}.
+- Cover all four NABC factors (Need → Approach → Benefits → Competition) within the session clock. Aim for roughly balanced time per stage (~25% each); if behind, shorten follow-ups and advance sooner; if ahead, allow one extra probe only where scores are weak.`
+    : `- Practice mode: no session timer. Still complete every NABC stage before closing; depth over speed.`;
 
   const system = `${EVALUATOR_SYSTEM}
 ${FRIDAY_INTERVIEW_SYSTEM}
@@ -101,7 +109,7 @@ If meaning is unclear, assistantMessage should ask one crisp clarification quest
 
 Branching rules (must set probeSameSection boolean to match what you will do in assistantMessage):
 - Let followUps = ${followUps}, section = ${params.activeSection}.
-- Time budget = ${params.sessionLengthMinutes || 5} min, elapsed = ${params.elapsedSeconds || 0}s, remaining = ${params.remainingSeconds || 0}s, pacing = ${params.pacingMode || "normal"}.
+${timeBudgetLine}
 - If followUps >= ${maxFollowups}: probeSameSection MUST be false (advance or close).
 - If followUps < ${minFollowups}: stay in section (probeSameSection true) UNLESS the answer is exceptional: avg score ≥ 8.2, every dimension ≥ 7.5, spread ≤ 1.2, and needsFollowup is false.
 - Else: probeSameSection true if needsFollowup OR avg < 6.2 OR lowest dimension < 5.5; otherwise false.

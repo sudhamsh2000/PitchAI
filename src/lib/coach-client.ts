@@ -85,7 +85,7 @@ export async function coachEvaluate(params: {
         followUpsAskedThisSection: params.followUpsAskedThisSection,
         userAnswer: params.userAnswer,
         feedbackHistory: params.feedbackHistory || [],
-        sessionLengthMinutes: params.sessionLengthMinutes || 5,
+        sessionLengthMinutes: params.sessionLengthMinutes != null ? params.sessionLengthMinutes : 5,
         elapsedSeconds: params.elapsedSeconds || 0,
       }),
       signal: coachAbort(90_000),
@@ -168,7 +168,7 @@ export async function coachFinal(params: {
         pitchBrief: params.pitchBrief,
         messages: toApiMessages(params.messages),
         feedbackHistory: params.feedbackHistory || [],
-        sessionLengthMinutes: params.sessionLengthMinutes || 5,
+        sessionLengthMinutes: params.sessionLengthMinutes != null ? params.sessionLengthMinutes : 5,
       }),
       signal: coachAbort(120_000),
     });
