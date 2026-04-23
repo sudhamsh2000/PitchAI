@@ -10,6 +10,14 @@ PITCHAI is a modern voice-first startup pitch coaching app built around the NABC
 
 It runs guided pitch interviews, scores every answer, gives sharp investor-style feedback, rewrites weak responses, and generates final 30s / 1m / 3m pitch scripts.
 
+## Latest Update (Apr 2026)
+
+- Introduced an immersive **AI Interview Stage** session layout (central Friday orb + persistent analysis + compact transcript strip).
+- Added **Pitch session length** selection in setup (`1/3/5/7/10 min`) with time-aware pacing in coaching.
+- Friday now adapts follow-up depth/section transitions based on remaining time (`On track` / `Compressed` / `Urgent`).
+- Live flow is now the default operating mode, with pause/resume and improved stage cues.
+- Added report management improvement: delete individual saved reports from **My analysis reports**.
+
 ## Core Features
 
 - Voice interview mode (mic + transcript)
