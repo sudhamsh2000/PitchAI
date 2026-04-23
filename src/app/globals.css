@@ -1,16 +1,32 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #07080b;
-  --bg-elevated: #0c0e14;
-  --bg-panel: #0f1118;
-  --border: rgba(255, 255, 255, 0.08);
-  --muted: #8a8f98;
-  --text: #e8eaef;
-  --accent: #6ee7ff;
-  --accent-2: #a78bfa;
+  --bg: #f5f5f7;
+  --bg-elevated: #ffffff;
+  --bg-panel: #f0f0f2;
+  --border: rgba(0, 0, 0, 0.1);
+  --muted: #6e6e73;
+  --text: #1d1d1f;
+  --accent: #0071e3;
+  --accent-2: #5ac8fa;
   --danger: #fb7185;
-  --glow: rgba(110, 231, 255, 0.35);
+  --glow: rgba(0, 113, 227, 0.22);
+  --bg-glow-a: rgba(255, 255, 255, 0.74);
+  --bg-glow-b: rgba(192, 220, 255, 0.44);
+}
+
+html.theme-dark {
+  --bg: #03050a;
+  --bg-elevated: #090d16;
+  --bg-panel: #111722;
+  --border: rgba(255, 255, 255, 0.12);
+  --muted: #9ca6b8;
+  --text: #eef3fb;
+  --accent: #8fcfff;
+  --accent-2: #c3e6ff;
+  --glow: rgba(129, 199, 255, 0.18);
+  --bg-glow-a: rgba(78, 126, 220, 0.14);
+  --bg-glow-b: rgba(40, 82, 162, 0.18);
 }
 
 @theme inline {
@@ -36,24 +52,25 @@ body {
   min-height: 100%;
   height: 100%;
   overflow-x: hidden;
-  background: radial-gradient(1200px 800px at 20% -10%, rgba(110, 231, 255, 0.08), transparent),
-    radial-gradient(900px 600px at 100% 0%, rgba(167, 139, 250, 0.08), transparent),
+  background: radial-gradient(1100px 700px at 20% -10%, var(--bg-glow-a), transparent),
+    radial-gradient(900px 620px at 100% 0%, var(--bg-glow-b), transparent),
     var(--bg);
   color: var(--text);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  transition: background 320ms ease, color 220ms ease;
 }
 
 ::selection {
-  background: rgba(110, 231, 255, 0.25);
+  background: var(--glow);
 }
 
 @keyframes pulse-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(110, 231, 255, 0.35);
+    box-shadow: 0 0 0 0 rgba(216, 219, 226, 0.28);
   }
   50% {
-    box-shadow: 0 0 0 14px rgba(110, 231, 255, 0);
+    box-shadow: 0 0 0 14px rgba(216, 219, 226, 0);
   }
 }
 
@@ -74,4 +91,28 @@ body {
 .wave-bar {
   transform-origin: bottom;
   animation: bar-dance 0.9s ease-in-out infinite;
+}
+
+@keyframes float-bubble {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.65;
+  }
+  50% {
+    transform: translate3d(var(--x, 10px), var(--y, -18px), 0) scale(1.06);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.65;
+  }
+}
+
+.bg-bubble {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(var(--blur, 2px));
+  animation: float-bubble var(--dur, 14s) ease-in-out infinite;
+  animation-delay: var(--delay, 0s);
+  will-change: transform;
 }

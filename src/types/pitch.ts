@@ -5,6 +5,7 @@ export type PitchMode =
   | "beginner";
 
 export type NABCSection = "need" | "approach" | "benefits" | "competition";
+export type SessionPacingMode = "normal" | "compressed" | "urgent";
 
 export type ChatRole = "assistant" | "user" | "system";
 
@@ -23,6 +24,8 @@ export interface ScoreFeedback {
   /** Set by evaluation agent — whether another follow-up would help */
   needsFollowup?: boolean;
   followupReason?: string;
+  /** Lightweight adaptive coaching insights shown in analysis panel */
+  progressInsights?: string[];
 }
 
 export interface FinalPitches {
@@ -51,6 +54,8 @@ export interface SessionFeedbackEntry {
   createdAt: number;
   section: NABCSection;
   userAnswer: string;
+  /** Optional source message id so rewritten answers can update memory */
+  sourceUserMessageId?: string;
   feedback: ScoreFeedback;
 }
 

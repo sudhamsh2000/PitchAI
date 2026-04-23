@@ -4,6 +4,7 @@ import { modeInstruction } from "@/lib/modes";
 import type { NABCSection, PitchMode } from "@/types/pitch";
 import { EVALUATOR_SYSTEM } from "./friday-base";
 import { createCoachCompletion, normalizeScore, tryParseJson } from "./llm-client";
+import { sessionMemoryPromptBlock, type SessionMemory } from "./sessionMemory";
 import type { ApiMsg, EvaluationAgentResult } from "./types";
 
 export async function runEvaluationAgent(
@@ -15,18 +16,21 @@ export async function runEvaluationAgent(
     activeSection: NABCSection;
     followUpsAskedThisSection: number;
     userAnswer: string;
+    sessionMemory?: SessionMemory;
   },
 ): Promise<EvaluationAgentResult> {
   const modeLine = modeInstruction(params.mode);
+  const memoryBlock = params.sessionMemory ? `\n${sessionMemoryPromptBlock(params.sessionMemory)}` : "";
   const system = `${EVALUATOR_SYSTEM}
 ${modeLine}
 ${founderContextBlock(params.pitchBrief)}
 NABC section under review: ${params.activeSection}.
-Follow-ups already asked in this section: ${params.followUpsAskedThisSection}.`;
+Follow-ups already asked in this section: ${params.followUpsAskedThisSection}.${memoryBlock}
+Use session memory to identify recurring weakness patterns.`;
 
   const completion = await createCoachCompletion(openai, {
-    temperature: 0.35,
-    maxTokens: 520,
+    temperature: 0.25,
+    maxTokens: 440,
     messages: [
       { role: "system", content: system },
       ...params.messages.map((m) => ({ role: m.role, content: m.content })),
@@ -50,6 +54,7 @@ Return JSON exactly:
 (feedback: 2-4 sharp lines; needsFollowup true if vague/unproven/hand-wavy.)
 
 Rules:
+- First reconstruct likely intent if phrasing looks like noisy speech-to-text.
 - Scores 0-10. 8+ only for genuinely specific, evidence-backed answers.
 - needsFollowup true if the answer is vague, generic, missing proof, missing numbers when relevant, or hand-wavy vs competition.
 - If healthcare mode, flag unsupported clinical or compliance claims.`,

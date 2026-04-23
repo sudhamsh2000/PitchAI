@@ -1,4 +1,5 @@
-import type { NABCSection, PitchMode } from "@/types/pitch";
+import type { NABCSection, PitchMode, SessionPacingMode } from "@/types/pitch";
+import type { SessionMemory } from "./sessionMemory";
 
 export type ApiMsg = { role: "user" | "assistant"; content: string };
 
@@ -20,8 +21,12 @@ export interface InterviewAgentParams {
   userAnswer: string;
   /** Latest evaluation — used to shape the next question */
   evaluation: EvaluationAgentResult;
+  sessionMemory?: SessionMemory;
   intent: "followup_same_section" | "advance_section" | "complete_session";
   nextSection?: NABCSection | "done";
+  pacingMode?: SessionPacingMode;
+  remainingSeconds?: number;
+  sessionLengthMinutes?: number;
 }
 
 export interface RewriteAgentResult {

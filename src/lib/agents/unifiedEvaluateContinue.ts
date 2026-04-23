@@ -1,14 +1,15 @@
 import type OpenAI from "openai";
 import { founderContextBlock } from "@/lib/coach-context";
 import { modeInstruction } from "@/lib/modes";
-import type { CoachEvaluateResult, NABCSection, PitchMode } from "@/types/pitch";
+import type { CoachEvaluateResult, NABCSection, PitchMode, SessionPacingMode } from "@/types/pitch";
 import { EVALUATOR_SYSTEM, FRIDAY_INTERVIEW_SYSTEM } from "./friday-base";
 import { createCoachCompletion, normalizeScore, tryParseJson } from "./llm-client";
 import { runInterviewNext } from "./interviewAgent";
+import { deriveProgressInsights, sessionMemoryPromptBlock, type SessionMemory } from "./sessionMemory";
 import type { ApiMsg, EvaluationAgentResult } from "./types";
 
-const MIN_FOLLOWUPS_PER_SECTION = 2;
-const MAX_FOLLOWUPS_PER_SECTION = 4;
+const MIN_FOLLOWUPS_PER_SECTION = 1;
+const MAX_FOLLOWUPS_PER_SECTION = 2;
 
 function nextSection(current: NABCSection): NABCSection | "done" {
   if (current === "need") return "approach";
@@ -24,8 +25,11 @@ function averageThree(e: { clarity: number; specificity: number; strength: numbe
 function shouldProbeSameSection(
   followUps: number,
   evaluation: EvaluationAgentResult,
+  pacingMode: SessionPacingMode,
 ): boolean {
-  if (followUps >= MAX_FOLLOWUPS_PER_SECTION) return false;
+  const minFollowups = pacingMode === "normal" ? MIN_FOLLOWUPS_PER_SECTION : 0;
+  const maxFollowups = pacingMode === "normal" ? MAX_FOLLOWUPS_PER_SECTION : 1;
+  if (followUps >= maxFollowups) return false;
 
   const avg = averageThree(evaluation);
   const low = Math.min(evaluation.clarity, evaluation.specificity, evaluation.strength);
@@ -33,7 +37,7 @@ function shouldProbeSameSection(
   const exceptional =
     !evaluation.needsFollowup && avg >= 8.2 && low >= 7.5 && avg - low <= 1.2;
 
-  if (followUps < MIN_FOLLOWUPS_PER_SECTION) {
+  if (followUps < minFollowups) {
     if (exceptional) return false;
     return true;
   }
@@ -70,24 +74,36 @@ export async function runUnifiedEvaluateAndContinue(
     activeSection: NABCSection;
     followUpsAskedThisSection: number;
     userAnswer: string;
+    sessionMemory?: SessionMemory;
+    sessionLengthMinutes?: number;
+    elapsedSeconds?: number;
+    remainingSeconds?: number;
+    pacingMode?: SessionPacingMode;
   },
 ): Promise<CoachEvaluateResult | null> {
   const modeLine = modeInstruction(params.mode);
   const followUps = params.followUpsAskedThisSection;
+  const pacing = params.pacingMode || "normal";
+  const maxFollowups = pacing === "normal" ? MAX_FOLLOWUPS_PER_SECTION : 1;
+  const minFollowups = pacing === "normal" ? MIN_FOLLOWUPS_PER_SECTION : 0;
+  const memoryBlock = params.sessionMemory ? `\n${sessionMemoryPromptBlock(params.sessionMemory)}` : "";
 
   const system = `${EVALUATOR_SYSTEM}
 ${FRIDAY_INTERVIEW_SYSTEM}
 ${modeLine}
-${founderContextBlock(params.pitchBrief)}
+${founderContextBlock(params.pitchBrief)}${memoryBlock}
 
 You do TWO things in ONE response (JSON only):
 1) Score the founder's latest answer (harsh but fair).
 2) Write Friday's next spoken line as "assistantMessage" — concise, voice-friendly, no markdown.
+First, infer what the founder most likely means even if dictation is rough.
+If meaning is unclear, assistantMessage should ask one crisp clarification question.
 
 Branching rules (must set probeSameSection boolean to match what you will do in assistantMessage):
 - Let followUps = ${followUps}, section = ${params.activeSection}.
-- If followUps >= ${MAX_FOLLOWUPS_PER_SECTION}: probeSameSection MUST be false (advance or close).
-- If followUps < ${MIN_FOLLOWUPS_PER_SECTION}: stay in section (probeSameSection true) UNLESS the answer is exceptional: avg score ≥ 8.2, every dimension ≥ 7.5, spread ≤ 1.2, and needsFollowup is false.
+- Time budget = ${params.sessionLengthMinutes || 5} min, elapsed = ${params.elapsedSeconds || 0}s, remaining = ${params.remainingSeconds || 0}s, pacing = ${params.pacingMode || "normal"}.
+- If followUps >= ${maxFollowups}: probeSameSection MUST be false (advance or close).
+- If followUps < ${minFollowups}: stay in section (probeSameSection true) UNLESS the answer is exceptional: avg score ≥ 8.2, every dimension ≥ 7.5, spread ≤ 1.2, and needsFollowup is false.
 - Else: probeSameSection true if needsFollowup OR avg < 6.2 OR lowest dimension < 5.5; otherwise false.
 
 If probeSameSection is true: ONE follow-up question still in the same NABC section (${params.activeSection}).
@@ -125,16 +141,16 @@ Return ONLY JSON as specified.`,
   let completion;
   try {
     completion = await createCoachCompletion(openai, {
-      temperature: 0.35,
-      maxTokens: 900,
+      temperature: 0.25,
+      maxTokens: 700,
       jsonObject: true,
       messages: messagesPayload,
     });
   } catch {
     try {
       completion = await createCoachCompletion(openai, {
-        temperature: 0.35,
-        maxTokens: 900,
+        temperature: 0.25,
+        maxTokens: 700,
         jsonObject: false,
         messages: messagesPayload,
       });
@@ -168,7 +184,7 @@ Return ONLY JSON as specified.`,
     followupReason: parsed.followupReason?.trim() || undefined,
   };
 
-  const truthProbe = shouldProbeSameSection(followUps, evaluation);
+  const truthProbe = shouldProbeSameSection(followUps, evaluation, pacing);
   const nextSec = nextSection(params.activeSection);
 
   let assistantMessage = parsed.assistantMessage.trim();
@@ -190,7 +206,11 @@ Return ONLY JSON as specified.`,
         followUpsAskedThisSection: followUps,
         userAnswer: params.userAnswer,
         evaluation,
+        sessionMemory: params.sessionMemory,
         intent: "followup_same_section",
+        pacingMode: pacing,
+        remainingSeconds: params.remainingSeconds,
+        sessionLengthMinutes: params.sessionLengthMinutes,
       });
       assistantMessage = fix.assistantMessage;
       activeSection = params.activeSection;
@@ -205,8 +225,12 @@ Return ONLY JSON as specified.`,
         followUpsAskedThisSection: followUps,
         userAnswer: params.userAnswer,
         evaluation,
+        sessionMemory: params.sessionMemory,
         intent: "complete_session",
         nextSection: "done",
+        pacingMode: pacing,
+        remainingSeconds: params.remainingSeconds,
+        sessionLengthMinutes: params.sessionLengthMinutes,
       });
       assistantMessage = fix.assistantMessage;
       activeSection = "done";
@@ -221,8 +245,12 @@ Return ONLY JSON as specified.`,
         followUpsAskedThisSection: followUps,
         userAnswer: params.userAnswer,
         evaluation,
+        sessionMemory: params.sessionMemory,
         intent: "advance_section",
         nextSection: nextSec,
+        pacingMode: pacing,
+        remainingSeconds: params.remainingSeconds,
+        sessionLengthMinutes: params.sessionLengthMinutes,
       });
       assistantMessage = fix.assistantMessage;
       activeSection = nextSec;
@@ -251,6 +279,7 @@ Return ONLY JSON as specified.`,
       bullets: evaluation.feedback,
       needsFollowup: evaluation.needsFollowup,
       followupReason: evaluation.followupReason,
+      progressInsights: params.sessionMemory ? deriveProgressInsights(params.sessionMemory) : [],
     },
     assistantMessage,
     activeSection,

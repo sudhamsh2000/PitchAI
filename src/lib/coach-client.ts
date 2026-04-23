@@ -46,12 +46,12 @@ function toApiMessages(messages: PitchMessage[]) {
     .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 }
 
-export async function coachStart(mode: PitchMode, pitchBrief: string) {
+export async function coachStart(mode: PitchMode, pitchBrief: string, sessionLengthMinutes?: number) {
   try {
     const res = await fetch("/api/coach", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "start", mode, pitchBrief }),
+      body: JSON.stringify({ action: "start", mode, pitchBrief, sessionLengthMinutes }),
       signal: coachAbort(120_000),
     });
     if (!res.ok) throw new Error(await readCoachError(res));
@@ -68,6 +68,9 @@ export async function coachEvaluate(params: {
   activeSection: NABCSection;
   followUpsAskedThisSection: number;
   userAnswer: string;
+  feedbackHistory?: SessionFeedbackEntry[];
+  sessionLengthMinutes?: number;
+  elapsedSeconds?: number;
 }) {
   try {
     const res = await fetch("/api/coach", {
@@ -81,8 +84,11 @@ export async function coachEvaluate(params: {
         activeSection: params.activeSection,
         followUpsAskedThisSection: params.followUpsAskedThisSection,
         userAnswer: params.userAnswer,
+        feedbackHistory: params.feedbackHistory || [],
+        sessionLengthMinutes: params.sessionLengthMinutes || 5,
+        elapsedSeconds: params.elapsedSeconds || 0,
       }),
-      signal: coachAbort(180_000),
+      signal: coachAbort(90_000),
     });
     if (!res.ok) throw new Error(await readCoachError(res));
     return (await res.json()) as CoachEvaluateResult;
@@ -97,6 +103,7 @@ export async function coachRewrite(params: {
   userAnswer: string;
   feedback: CoachEvaluateResult["feedback"];
   activeSection: NABCSection;
+  feedbackHistory?: SessionFeedbackEntry[];
 }) {
   try {
     const res = await fetch("/api/coach", {
@@ -109,6 +116,7 @@ export async function coachRewrite(params: {
         userAnswer: params.userAnswer,
         feedback: params.feedback,
         activeSection: params.activeSection,
+        feedbackHistory: params.feedbackHistory || [],
       }),
       signal: coachAbort(120_000),
     });
@@ -147,6 +155,8 @@ export async function coachFinal(params: {
   mode: PitchMode;
   pitchBrief: string;
   messages: PitchMessage[];
+  feedbackHistory?: SessionFeedbackEntry[];
+  sessionLengthMinutes?: number;
 }) {
   try {
     const res = await fetch("/api/coach", {
@@ -157,8 +167,10 @@ export async function coachFinal(params: {
         mode: params.mode,
         pitchBrief: params.pitchBrief,
         messages: toApiMessages(params.messages),
+        feedbackHistory: params.feedbackHistory || [],
+        sessionLengthMinutes: params.sessionLengthMinutes || 5,
       }),
-      signal: coachAbort(180_000),
+      signal: coachAbort(120_000),
     });
     if (!res.ok) throw new Error(await readCoachError(res));
     return (await res.json()) as FinalPitches;

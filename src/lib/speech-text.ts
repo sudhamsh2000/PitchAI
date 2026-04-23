@@ -1,6 +1,13 @@
 /** Light cleanup for Web Speech dictation chunks before appending to the answer. */
 export function normalizeDictationChunk(input: string) {
-  return input.replace(/\s+/g, " ").replace(/\bi\b/g, "I").trim();
+  return input
+    .replace(/\s+/g, " ")
+    .replace(/\b(i|im|i'm)\b/gi, (m) => (m.toLowerCase() === "i" ? "I" : "I'm"))
+    .replace(/\b(uh+|um+|erm+|hmm+)\b/gi, "")
+    .replace(/\s+,/g, ",")
+    .replace(/\s+\./g, ".")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 export function normalizeForSpeech(input: string) {

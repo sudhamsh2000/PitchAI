@@ -1,15 +1,27 @@
 import type OpenAI from "openai";
-import type { CoachEvaluateResult, NABCSection, PitchMode, SessionAnalysisReport, SessionFeedbackEntry } from "@/types/pitch";
+import type { CoachEvaluateResult, NABCSection, PitchMode, SessionAnalysisReport, SessionFeedbackEntry, SessionPacingMode } from "@/types/pitch";
 import { runEvaluationAgent } from "./evaluationAgent";
 import { runInterviewNext, runInterviewStart } from "./interviewAgent";
 import { runPitchComposerAgent } from "./pitchComposerAgent";
 import { runRewriteAgent } from "./rewriteAgent";
 import { runSessionReportAgent } from "./sessionReportAgent";
 import { runUnifiedEvaluateAndContinue } from "./unifiedEvaluateContinue";
+import { buildSessionMemory, deriveProgressInsights } from "./sessionMemory";
 import type { ApiMsg } from "./types";
 
-const MIN_FOLLOWUPS_PER_SECTION = 2;
-const MAX_FOLLOWUPS_PER_SECTION = 4;
+function pacingFromTime(sessionLengthMinutes: number, elapsedSeconds: number): SessionPacingMode {
+  const total = Math.max(60, sessionLengthMinutes * 60);
+  const ratio = elapsedSeconds / total;
+  if (ratio >= 0.9) return "urgent";
+  if (ratio >= 0.7) return "compressed";
+  return "normal";
+}
+
+function followupCapsForPacing(pacing: SessionPacingMode) {
+  if (pacing === "urgent") return { min: 0, max: 1 };
+  if (pacing === "compressed") return { min: 0, max: 1 };
+  return { min: 1, max: 2 };
+}
 
 function nextSection(current: NABCSection): NABCSection | "done" {
   if (current === "need") return "approach";
@@ -26,8 +38,10 @@ function averageThree(e: { clarity: number; specificity: number; strength: numbe
 function shouldProbeSameSection(
   followUps: number,
   evaluation: Awaited<ReturnType<typeof runEvaluationAgent>>,
+  pacing: SessionPacingMode,
 ): boolean {
-  if (followUps >= MAX_FOLLOWUPS_PER_SECTION) return false;
+  const caps = followupCapsForPacing(pacing);
+  if (followUps >= caps.max) return false;
 
   const avg = averageThree(evaluation);
   const low = Math.min(evaluation.clarity, evaluation.specificity, evaluation.strength);
@@ -35,7 +49,7 @@ function shouldProbeSameSection(
   const exceptional =
     !evaluation.needsFollowup && avg >= 8.2 && low >= 7.5 && avg - low <= 1.2;
 
-  if (followUps < MIN_FOLLOWUPS_PER_SECTION) {
+  if (followUps < caps.min) {
     if (exceptional) return false;
     return true;
   }
@@ -49,7 +63,7 @@ function shouldProbeSameSection(
 
 export async function orchestrateStart(
   openai: OpenAI,
-  params: { mode: PitchMode; pitchBrief: string },
+  params: { mode: PitchMode; pitchBrief: string; sessionLengthMinutes?: number },
 ) {
   return runInterviewStart(openai, params);
 }
@@ -63,14 +77,34 @@ export async function orchestrateEvaluateAndContinue(
     activeSection: NABCSection;
     followUpsAskedThisSection: number;
     userAnswer: string;
+    feedbackHistory?: SessionFeedbackEntry[];
+    sessionLengthMinutes?: number;
+    elapsedSeconds?: number;
   },
 ): Promise<CoachEvaluateResult> {
-  const unified = await runUnifiedEvaluateAndContinue(openai, params);
+  const sessionLength = params.sessionLengthMinutes || 5;
+  const elapsed = params.elapsedSeconds || 0;
+  const pacingMode = pacingFromTime(sessionLength, elapsed);
+  const remainingSeconds = Math.max(0, sessionLength * 60 - elapsed);
+  const sessionMemory = buildSessionMemory({
+    pitchBrief: params.pitchBrief,
+    mode: params.mode,
+    currentStage: params.activeSection,
+    feedbackHistory: params.feedbackHistory || [],
+  });
+  const unified = await runUnifiedEvaluateAndContinue(openai, {
+    ...params,
+    sessionMemory,
+    pacingMode,
+    sessionLengthMinutes: sessionLength,
+    elapsedSeconds: elapsed,
+    remainingSeconds,
+  });
   if (unified) return unified;
 
-  const evaluation = await runEvaluationAgent(openai, params);
+  const evaluation = await runEvaluationAgent(openai, { ...params, sessionMemory });
   const followUps = params.followUpsAskedThisSection;
-  const probe = shouldProbeSameSection(followUps, evaluation);
+  const probe = shouldProbeSameSection(followUps, evaluation, pacingMode);
 
   if (probe) {
     const next = await runInterviewNext(openai, {
@@ -81,7 +115,11 @@ export async function orchestrateEvaluateAndContinue(
       followUpsAskedThisSection: followUps,
       userAnswer: params.userAnswer,
       evaluation,
+      sessionMemory,
       intent: "followup_same_section",
+      pacingMode,
+      remainingSeconds,
+      sessionLengthMinutes: sessionLength,
     });
     return {
       feedback: {
@@ -91,6 +129,7 @@ export async function orchestrateEvaluateAndContinue(
         bullets: evaluation.feedback,
         needsFollowup: evaluation.needsFollowup,
         followupReason: evaluation.followupReason,
+        progressInsights: deriveProgressInsights(sessionMemory),
       },
       assistantMessage: next.assistantMessage,
       activeSection: params.activeSection,
@@ -110,8 +149,12 @@ export async function orchestrateEvaluateAndContinue(
       followUpsAskedThisSection: followUps,
       userAnswer: params.userAnswer,
       evaluation,
+      sessionMemory,
       intent: "complete_session",
       nextSection: "done",
+      pacingMode,
+      remainingSeconds,
+      sessionLengthMinutes: sessionLength,
     });
     return {
       feedback: {
@@ -121,6 +164,7 @@ export async function orchestrateEvaluateAndContinue(
         bullets: evaluation.feedback,
         needsFollowup: false,
         followupReason: evaluation.followupReason,
+        progressInsights: deriveProgressInsights(sessionMemory),
       },
       assistantMessage: closing.assistantMessage,
       activeSection: "done",
@@ -137,8 +181,12 @@ export async function orchestrateEvaluateAndContinue(
     followUpsAskedThisSection: followUps,
     userAnswer: params.userAnswer,
     evaluation,
+    sessionMemory,
     intent: "advance_section",
     nextSection: nextSec,
+    pacingMode,
+    remainingSeconds,
+    sessionLengthMinutes: sessionLength,
   });
 
   return {
@@ -149,6 +197,7 @@ export async function orchestrateEvaluateAndContinue(
       bullets: evaluation.feedback,
       needsFollowup: evaluation.needsFollowup,
       followupReason: evaluation.followupReason,
+      progressInsights: deriveProgressInsights(sessionMemory),
     },
     assistantMessage: advance.assistantMessage,
     activeSection: nextSec,
@@ -159,14 +208,26 @@ export async function orchestrateEvaluateAndContinue(
 
 export async function orchestrateRewrite(
   openai: OpenAI,
-  params: Parameters<typeof runRewriteAgent>[1],
+  params: Parameters<typeof runRewriteAgent>[1] & { feedbackHistory?: SessionFeedbackEntry[] },
 ) {
-  return runRewriteAgent(openai, params);
+  const sessionMemory = buildSessionMemory({
+    pitchBrief: params.pitchBrief,
+    mode: params.mode,
+    currentStage: params.activeSection,
+    feedbackHistory: params.feedbackHistory || [],
+  });
+  return runRewriteAgent(openai, { ...params, sessionMemory });
 }
 
 export async function orchestrateFinalPitches(
   openai: OpenAI,
-  params: { mode: PitchMode; pitchBrief: string; messages: ApiMsg[] },
+  params: {
+    mode: PitchMode;
+    pitchBrief: string;
+    messages: ApiMsg[];
+    feedbackHistory?: SessionFeedbackEntry[];
+    sessionLengthMinutes?: number;
+  },
 ) {
   return runPitchComposerAgent(openai, params);
 }

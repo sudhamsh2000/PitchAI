@@ -8,6 +8,7 @@ import type {
   PitchMessage,
   PitchMode,
   ScoreFeedback,
+  SessionPacingMode,
   SessionFeedbackEntry,
 } from "@/types/pitch";
 
@@ -25,6 +26,10 @@ interface PitchState {
   mode: PitchMode;
   sessionPhase: SessionPhase;
   pitchBrief: string;
+  sessionLengthMinutes: number;
+  sessionStartedAt: number | null;
+  elapsedSeconds: number;
+  pacingMode: SessionPacingMode;
   phase: Phase;
   messages: PitchMessage[];
   activeSection: NABCSection;
@@ -45,6 +50,11 @@ interface PitchState {
 
   setMode: (m: PitchMode) => void;
   setPitchBrief: (t: string) => void;
+  setSessionLengthMinutes: (m: number) => void;
+  beginSessionClock: () => void;
+  setElapsedSeconds: (s: number) => void;
+  setPacingMode: (p: SessionPacingMode) => void;
+  clearSessionClock: () => void;
   setSessionPhase: (p: SessionPhase) => void;
   clearCoachThread: () => void;
   returnToSetup: () => void;
@@ -63,6 +73,7 @@ interface PitchState {
   setLastUserMessageId: (id: string | null) => void;
 
   stashEvaluateResult: (result: CoachEvaluateResult) => void;
+  updateFeedbackEntryAnswer: (sourceUserMessageId: string, answer: string) => void;
   commitPendingQuestion: () => void;
   discardPending: () => void;
 
@@ -85,6 +96,10 @@ export const usePitchStore = create<PitchState>((set, get) => ({
   mode: "investor",
   sessionPhase: "setup",
   pitchBrief: "",
+  sessionLengthMinutes: 5,
+  sessionStartedAt: null,
+  elapsedSeconds: 0,
+  pacingMode: "normal",
   phase: "idle",
   messages: [],
   activeSection: "need",
@@ -104,6 +119,11 @@ export const usePitchStore = create<PitchState>((set, get) => ({
 
   setMode: (m) => set({ mode: m }),
   setPitchBrief: (t) => set({ pitchBrief: t }),
+  setSessionLengthMinutes: (m) => set({ sessionLengthMinutes: Math.max(1, Math.min(30, Math.round(m || 1))) }),
+  beginSessionClock: () => set({ sessionStartedAt: Date.now(), elapsedSeconds: 0, pacingMode: "normal" }),
+  setElapsedSeconds: (s) => set({ elapsedSeconds: Math.max(0, Math.floor(s)) }),
+  setPacingMode: (p) => set({ pacingMode: p }),
+  clearSessionClock: () => set({ sessionStartedAt: null, elapsedSeconds: 0, pacingMode: "normal" }),
   setSessionPhase: (p) => set({ sessionPhase: p }),
 
   clearCoachThread: () =>
@@ -124,6 +144,9 @@ export const usePitchStore = create<PitchState>((set, get) => ({
       finalPitches: null,
       showFinal: false,
       feedbackHistory: [],
+      sessionStartedAt: null,
+      elapsedSeconds: 0,
+      pacingMode: "normal",
     }),
 
   returnToSetup: () =>
@@ -145,6 +168,9 @@ export const usePitchStore = create<PitchState>((set, get) => ({
       finalPitches: null,
       showFinal: false,
       feedbackHistory: [],
+      sessionStartedAt: null,
+      elapsedSeconds: 0,
+      pacingMode: "normal",
     }),
 
   setInterimTranscript: (t) => set({ interimTranscript: t }),
@@ -175,6 +201,10 @@ export const usePitchStore = create<PitchState>((set, get) => ({
       finalPitches: null,
       showFinal: false,
       feedbackHistory: [],
+      sessionLengthMinutes: 5,
+      sessionStartedAt: null,
+      elapsedSeconds: 0,
+      pacingMode: "normal",
     }),
 
   appendMessage: (role, content) => {
@@ -228,6 +258,7 @@ export const usePitchStore = create<PitchState>((set, get) => ({
           createdAt: Date.now(),
           section: s.activeSection,
           userAnswer,
+          sourceUserMessageId: uid || undefined,
           feedback: {
             clarity: fb.clarity,
             specificity: fb.specificity,
@@ -252,6 +283,13 @@ export const usePitchStore = create<PitchState>((set, get) => ({
         feedbackHistory,
       };
     }),
+
+  updateFeedbackEntryAnswer: (sourceUserMessageId, answer) =>
+    set((s) => ({
+      feedbackHistory: s.feedbackHistory.map((e) =>
+        e.sourceUserMessageId === sourceUserMessageId ? { ...e, userAnswer: answer } : e,
+      ),
+    })),
 
   commitPendingQuestion: () => {
     const { pendingNext, pendingMeta } = get();

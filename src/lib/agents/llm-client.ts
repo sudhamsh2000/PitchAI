@@ -14,7 +14,7 @@ export function modelName() {
   if (usingOpenRouter()) {
     return process.env.OPENROUTER_MODEL?.trim() || "openrouter/free";
   }
-  return process.env.OPENAI_MODEL?.trim() || "gpt-4o";
+  return process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
 }
 
 export function fallbackModels() {

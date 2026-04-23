@@ -22,11 +22,11 @@ export function NABCProgress({
   const idx = ORDER.indexOf(active);
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between text-xs text-zinc-400">
+      <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
         <span>NABC progress</span>
         <span>{complete ? "Complete" : `${LABEL[active]} phase`}</span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-white/5">
+      <div className="h-1.5 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
         <motion.div
           className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-violet-400 to-fuchsia-400"
           initial={false}
@@ -45,10 +45,10 @@ export function NABCProgress({
               key={key}
               className={`rounded-lg border px-2 py-2 text-center text-[11px] font-medium ${
                 state === "done"
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
                   : state === "active"
-                    ? "border-cyan-400/40 bg-cyan-500/10 text-cyan-100"
-                    : "border-white/5 bg-white/[0.02] text-zinc-500"
+                    ? "border-cyan-400/40 bg-cyan-500/10 text-cyan-700 dark:text-cyan-100"
+                    : "border-black/10 bg-black/[0.02] text-zinc-500 dark:border-white/10 dark:bg-white/[0.02]"
               }`}
             >
               {LABEL[key]}

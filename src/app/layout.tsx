@@ -24,13 +24,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark h-full">
+    <html lang="en" className="h-full">
       <body
         className={`${geistSans.variable} ${geistMono.variable} min-h-full antialiased font-sans`}
       >
         {children}
-        <div className="pointer-events-none fixed bottom-3 right-3 z-50 rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] font-medium tracking-wide text-zinc-400 backdrop-blur">
-          A product of <span className="text-zinc-200">Smash TECH</span>
+        <div className="pointer-events-none fixed bottom-3 right-3 z-50 rounded-full border border-black/10 bg-white/70 px-3 py-1 text-[10px] font-medium tracking-wide text-zinc-600 backdrop-blur dark:border-white/12 dark:bg-[rgba(8,12,19,0.82)] dark:text-zinc-400">
+          A product of <span className="text-zinc-800 dark:text-zinc-200">Smash TECH</span>
         </div>
       </body>
     </html>

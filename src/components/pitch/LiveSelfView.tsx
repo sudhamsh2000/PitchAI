@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react";
  * Small mirrored self-view for confidence during live sessions only.
  * Video-only stream (does not replace mic / speech recognition).
  */
-export function LiveSelfView({ active }: { active: boolean }) {
+export function LiveSelfView({ active, speaking }: { active: boolean; speaking?: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -55,17 +55,23 @@ export function LiveSelfView({ active }: { active: boolean }) {
   if (!active) return null;
 
   return (
-    <div className="relative shrink-0 overflow-hidden rounded-xl border border-cyan-400/25 bg-black/50 shadow-lg shadow-cyan-500/10">
+    <div
+      className={`relative shrink-0 overflow-hidden rounded-2xl border bg-black/60 shadow-[0_12px_30px_rgba(0,0,0,0.3)] transition ${
+        speaking
+          ? "border-sky-400/65 shadow-[0_0_0_2px_rgba(56,189,248,0.22),0_18px_34px_rgba(14,116,255,0.24)]"
+          : "border-black/15 dark:border-sky-300/25 dark:shadow-sky-500/10"
+      }`}
+    >
       <video
         ref={videoRef}
         muted
         playsInline
         autoPlay
-        className="h-[88px] w-[120px] object-cover sm:h-[100px] sm:w-[140px]"
+        className="h-[132px] w-[196px] object-cover sm:h-[148px] sm:w-[220px]"
         style={{ transform: "scaleX(-1)" }}
       />
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-1">
-        <p className="text-center text-[9px] font-semibold uppercase tracking-wide text-cyan-100/90">
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/35 to-transparent px-2 py-1.5">
+        <p className="text-center text-[10px] font-semibold uppercase tracking-wide text-cyan-100/90">
           You
         </p>
       </div>

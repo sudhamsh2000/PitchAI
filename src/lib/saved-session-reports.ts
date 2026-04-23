@@ -29,3 +29,10 @@ export function saveSessionReport(report: SessionAnalysisReport): void {
 export function getSessionReportById(id: string): SessionAnalysisReport | null {
   return loadSessionReports().find((r) => r.id === id) ?? null;
 }
+
+export function deleteSessionReportById(id: string): void {
+  if (typeof window === "undefined") return;
+  const prev = safeParse(localStorage.getItem(STORAGE_KEY));
+  const next = prev.filter((r) => r.id !== id);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+}

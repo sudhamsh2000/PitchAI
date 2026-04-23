@@ -1,20 +1,44 @@
 import type OpenAI from "openai";
 import { founderContextBlock } from "@/lib/coach-context";
 import { modeInstruction } from "@/lib/modes";
-import type { FinalPitches, PitchMode } from "@/types/pitch";
+import type { FinalPitches, PitchMode, SessionFeedbackEntry } from "@/types/pitch";
 import { FRIDAY_INTERVIEW_SYSTEM } from "./friday-base";
 import { createCoachCompletion, tryParseJson } from "./llm-client";
+import { buildSessionMemory, strongestAnswersBySection } from "./sessionMemory";
 import type { ApiMsg } from "./types";
 
 export async function runPitchComposerAgent(
   openai: OpenAI,
-  params: { mode: PitchMode; pitchBrief: string; messages: ApiMsg[] },
+  params: {
+    mode: PitchMode;
+    pitchBrief: string;
+    messages: ApiMsg[];
+    feedbackHistory?: SessionFeedbackEntry[];
+    sessionLengthMinutes?: number;
+  },
 ): Promise<FinalPitches> {
   const modeLine = modeInstruction(params.mode);
+  const memory = buildSessionMemory({
+    pitchBrief: params.pitchBrief,
+    mode: params.mode,
+    currentStage: "competition",
+    feedbackHistory: params.feedbackHistory || [],
+  });
+  const strongest = strongestAnswersBySection(memory);
+  const strongestBlock = ["need", "approach", "benefits", "competition"]
+    .map((s) => {
+      const row = strongest.get(s as "need" | "approach" | "benefits" | "competition");
+      return row ? `- ${s}: ${row.answer}` : `- ${s}: (no strong refined answer yet)`;
+    })
+    .join("\n");
   const system = `${FRIDAY_INTERVIEW_SYSTEM}
 ${modeLine}
 ${founderContextBlock(params.pitchBrief)}
-You compose final investor-ready scripts from the conversation. Ground every claim in what the founder actually said; do not invent traction numbers they did not provide.`;
+You compose final investor-ready scripts from the conversation. Ground every claim in what the founder actually said; do not invent traction numbers they did not provide.
+Session budget was ${params.sessionLengthMinutes || 5} minutes. If budget <= 3 minutes, prioritize concise, practical 30s/1m outputs and keep 3m compact.
+If budget >= 7 minutes, allow fuller detail and richer 3m structure.
+Use these strongest refined answers as primary source material:
+${strongestBlock}`;
 
   const completion = await createCoachCompletion(openai, {
     temperature: 0.45,

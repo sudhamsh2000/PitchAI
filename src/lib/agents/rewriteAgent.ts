@@ -4,6 +4,7 @@ import { modeInstruction } from "@/lib/modes";
 import type { NABCSection, PitchMode } from "@/types/pitch";
 import { FRIDAY_INTERVIEW_SYSTEM } from "./friday-base";
 import { createCoachCompletion, tryParseJson } from "./llm-client";
+import { sessionMemoryPromptBlock, type SessionMemory } from "./sessionMemory";
 import type { RewriteAgentResult } from "./types";
 
 export async function runRewriteAgent(
@@ -14,14 +15,18 @@ export async function runRewriteAgent(
     userAnswer: string;
     activeSection: NABCSection;
     feedback: { clarity: number; specificity: number; strength: number; bullets: string[] };
+    sessionMemory?: SessionMemory;
   },
 ): Promise<RewriteAgentResult> {
   const modeLine = modeInstruction(params.mode);
+  const memoryBlock = params.sessionMemory ? `\n${sessionMemoryPromptBlock(params.sessionMemory)}` : "";
   const system = `${FRIDAY_INTERVIEW_SYSTEM}
 ${modeLine}
 ${founderContextBlock(params.pitchBrief)}
+${memoryBlock}
 You are rewriting the founder's answer for section "${params.activeSection}".
 Preserve intent; improve clarity and specificity; keep it credible (not marketing hype).
+Prioritize fixing recurring weaknesses from session memory while keeping strengths intact.
 Return JSON only.`;
 
   const completion = await createCoachCompletion(openai, {

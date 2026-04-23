@@ -8,6 +8,8 @@ const extraAllowedDevOrigins = (process.env.ALLOWED_DEV_ORIGINS || "")
 const nextConfig: NextConfig = {
   // Allow local-network testing in Next dev without HMR being blocked.
   allowedDevOrigins: ["localhost", "127.0.0.1", "172.20.10.5", "192.168.4.26", ...extraAllowedDevOrigins],
+  // Hide the Next.js dev indicator ("N" bubble) overlay.
+  devIndicators: false,
 };
 
 export default nextConfig;

@@ -27,6 +27,8 @@ export async function POST(req: Request) {
   const action = body.action as string;
   const mode = (body.mode as PitchMode) || "investor";
   const pitchBrief = String(body.pitchBrief || "");
+  const sessionLengthMinutes = Math.max(1, Math.min(30, Number(body.sessionLengthMinutes) || 5));
+  const elapsedSeconds = Math.max(0, Number(body.elapsedSeconds) || 0);
 
   try {
     if (action === "start") {
@@ -36,7 +38,7 @@ export async function POST(req: Request) {
           { status: 400 },
         );
       }
-      const result = await orchestrateStart(openai, { mode, pitchBrief });
+      const result = await orchestrateStart(openai, { mode, pitchBrief, sessionLengthMinutes });
       return NextResponse.json(result);
     }
 
@@ -45,6 +47,7 @@ export async function POST(req: Request) {
       const activeSection = body.activeSection as NABCSection;
       const followUpsAskedThisSection = Number(body.followUpsAskedThisSection) || 0;
       const userAnswer = String(body.userAnswer || "");
+      const feedbackHistory = (body.feedbackHistory as SessionFeedbackEntry[]) || [];
 
       const result = await orchestrateEvaluateAndContinue(openai, {
         mode,
@@ -53,6 +56,9 @@ export async function POST(req: Request) {
         activeSection,
         followUpsAskedThisSection,
         userAnswer,
+        feedbackHistory,
+        sessionLengthMinutes,
+        elapsedSeconds,
       });
       return NextResponse.json(result);
     }
@@ -66,6 +72,7 @@ export async function POST(req: Request) {
         strength: number;
         bullets: string[];
       };
+      const feedbackHistory = (body.feedbackHistory as SessionFeedbackEntry[]) || [];
 
       const result = await orchestrateRewrite(openai, {
         mode,
@@ -73,13 +80,21 @@ export async function POST(req: Request) {
         userAnswer,
         activeSection,
         feedback,
+        feedbackHistory,
       });
       return NextResponse.json(result);
     }
 
     if (action === "final_pitches") {
       const messages = body.messages as { role: "user" | "assistant"; content: string }[];
-      const result = await orchestrateFinalPitches(openai, { mode, pitchBrief, messages });
+      const feedbackHistory = (body.feedbackHistory as SessionFeedbackEntry[]) || [];
+      const result = await orchestrateFinalPitches(openai, {
+        mode,
+        pitchBrief,
+        messages,
+        feedbackHistory,
+        sessionLengthMinutes,
+      });
       return NextResponse.json(result);
     }
 

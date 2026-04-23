@@ -29,13 +29,14 @@ It runs guided pitch interviews, scores every answer, gives sharp investor-style
   - Hackathon
   - Healthcare
   - Beginner
-- Live session mode (continuous flow, faster pause-to-submit, improved Web Speech handling)
+- Live session is always on (continuous flow, faster pause-to-submit, improved Web Speech handling)
+- Session length control (1 / 3 / 5 / 7 / 10 min) with time-aware pacing (on-track / compressed / urgent)
 - **Live self-view** — small mirrored webcam preview during live sessions only (confidence / framing)
 - **End session** — full session analysis report (overall rating, averages, strengths, improvements, per-answer scores); saved locally on this device
 - **My analysis reports** — browse past reports from setup (same device, local storage)
 - Natural voice with free local Piper support (OpenAI fallback optional); client timeout prevents hung TTS requests
 - Friday persona (direct, investor-style, no fluff)
-- Circular live voice spectrum (neon ring style)
+- Immersive AI interview stage (central orb + live self-view + compact transcript strip + persistent analysis panel)
 - Auto turn-taking in live mode (prevents self-echo loops)
 - **UI** — viewport-stable layouts (home, setup, coaching); chat transcript scrolls inside the conversation column; setup keeps **Start pitch session** pinned while the form scrolls
 
@@ -58,7 +59,7 @@ The app still presents **one** coach, **Friday**. Under the hood, `/api/coach` o
 - **pitchComposerAgent** — final 30s / 1m / 3m scripts and deck bullets.
 - **unifiedEvaluateContinue** (optional fast path) — single LLM call for evaluate + next question when JSON parses cleanly; falls back to evaluation + interview if needed.
 - **sessionReportAgent** — end-of-session narrative report from scored turns (`action: session_report`).
-- **orchestrator** — runs evaluation + next step (unified or two-step), NABC rules (about 2–4 probes per section, max 4) before advancing.
+- **orchestrator** — runs evaluation + next step (unified or two-step), NABC rules with time-aware pacing (normal/compressed/urgent) before advancing.
 
 Shared LLM helpers live in `src/lib/agents/llm-client.ts` (same OpenRouter/OpenAI behavior as before). Coach HTTP calls from the browser use **abort timeouts** so a stalled model does not freeze the UI indefinitely.
 
@@ -116,7 +117,7 @@ OPENROUTER_FALLBACK_MODELS=openrouter/auto,openai/gpt-4o-mini
 
 ```bash
 OPENAI_API_KEY=your_openai_key
-OPENAI_MODEL=gpt-4o
+OPENAI_MODEL=gpt-4o-mini
 ```
 
 ### 4) Natural Voice setup (best free option)
@@ -226,8 +227,8 @@ Then open [http://localhost:3000](http://localhost:3000). Stop the server with `
 | 2 | **Setup** — enter a short pitch brief, pick a mode, start session. |
 | 3 | **Coach** — Friday asks a question; you answer by **text** first (fastest sanity check). |
 | 4 | **Analysis** — after submit, scores and feedback bullets appear. |
-| 5 | **Continue** — next Friday message appears (review step in non-live mode). |
-| 6 | **Voice** — use Chrome or Edge; allow microphone. Optional: enable **Live session** for auto mic / auto submit. Safari: type answers or use Chrome for dictation. |
+| 5 | **Continue** — next Friday message appears and NABC stage progresses with time-aware pacing. |
+| 6 | **Voice** — use Chrome or Edge; allow microphone. Live mode is default/always-on for auto mic + auto submit. Safari: type answers or use Chrome for dictation. |
 | 7 | **Natural voice** — with Piper Docker running + `PIPER_TTS_URL` set, Friday should sound neural; otherwise browser TTS is used. |
 | 8 | **Live self-view** — in live mode, confirm webcam preview appears (permission). |
 | 9 | **End session** — ends coaching, shows saved analysis report; reopen from setup via **Analysis reports**. |
@@ -251,11 +252,11 @@ You should get JSON with `assistantMessage` and `activeSection: "need"`. If you 
 2. Fill pitch context (what you are building, customer, stage)
 3. Optional: open **View my analysis reports** or **Analysis reports** (header) to review past session reports saved on this device
 4. Select a mode (Investor / Hackathon / Healthcare / Beginner)
-5. Optional: enable Live session (Chrome/Edge recommended for speech recognition)
+5. Choose **Pitch session length** (1 / 3 / 5 / 7 / 10 min)
 6. Click **Start pitch session** (button stays at the bottom of the screen on setup)
-7. Answer via voice or text
-8. Review scores + feedback
-9. Use **End session** anytime for a full report, or **Restart session** / **Change pitch idea** as needed
+7. Answer via voice or text (live flow auto-listens and auto-submits)
+8. Review scores + feedback in the persistent analysis panel
+9. Use **End session** anytime for a full report, or **Restart** / **Change pitch idea** as needed
 10. Use rewrite helper when needed
 11. Generate final outputs and copy/export
 
