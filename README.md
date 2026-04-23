@@ -296,6 +296,8 @@ You should get JSON with `assistantMessage` and `activeSection: "need"`. If you 
 | Command | Purpose |
 | --- | --- |
 | `npm run dev` or `npm run local` | **Local development** (Turbopack, hot reload). Use this daily. |
+| `npm test` | **Full project check**: ESLint → production build → HTTP/API smoke tests against `http://127.0.0.1:3000`. If nothing is listening, starts `next start` temporarily. Exit code **1** if any hard failure; **warnings** for missing optional API keys. Set `SKIP_HTTP=1` to only lint+build. |
+| `npm run test:quick` | Same as `npm run verify` (lint + build only, faster). |
 | `npm run verify` | **Lint + production build** — run before PRs / releases. |
 | `npm run build` | Production build only. |
 | `npm start` | Production server **after** `npm run build` (not for normal dev). |

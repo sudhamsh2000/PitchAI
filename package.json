@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "verify": "npm run lint && npm run build"
+    "verify": "npm run lint && npm run build",
+    "test": "node scripts/test-all.mjs",
+    "test:quick": "npm run verify"
   },
   "dependencies": {
     "framer-motion": "^12.38.0",
