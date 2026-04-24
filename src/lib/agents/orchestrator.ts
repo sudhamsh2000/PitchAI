@@ -1,7 +1,11 @@
 import type OpenAI from "openai";
 import type { CoachEvaluateResult, NABCSection, PitchMode, SessionAnalysisReport, SessionFeedbackEntry, SessionPacingMode } from "@/types/pitch";
+import type { NABCComparisonReport, NABCEvaluation, NABCWrittenReport } from "@/types/nabc-lab";
 import { runEvaluationAgent } from "./evaluationAgent";
 import { runInterviewNext, runInterviewStart } from "./interviewAgent";
+import { runNABCCompareAgent } from "./nabcCompareAgent";
+import { runNABCEvaluatorAgent } from "./nabcEvaluatorAgent";
+import { runNABCWriterAgent } from "./nabcWriterAgent";
 import { runPitchComposerAgent } from "./pitchComposerAgent";
 import { runRewriteAgent } from "./rewriteAgent";
 import { runSessionReportAgent } from "./sessionReportAgent";
@@ -258,4 +262,25 @@ export async function orchestrateSessionReport(
     overallLabel: body.overallLabel,
     overallRating: body.overallRating,
   };
+}
+
+export async function orchestrateNABCTranscriptEvaluation(
+  openai: OpenAI,
+  params: { transcript: string },
+): Promise<NABCEvaluation> {
+  return runNABCEvaluatorAgent(openai, params);
+}
+
+export async function orchestrateNABCWriteReport(
+  openai: OpenAI,
+  params: { evaluation: NABCEvaluation; teamName?: string },
+): Promise<NABCWrittenReport> {
+  return runNABCWriterAgent(openai, params);
+}
+
+export async function orchestrateNABCCompareReports(
+  openai: OpenAI,
+  params: { transcriptBasedReport: string; videoBasedReport: string },
+): Promise<NABCComparisonReport> {
+  return runNABCCompareAgent(openai, params);
 }

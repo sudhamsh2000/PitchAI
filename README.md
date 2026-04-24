@@ -52,6 +52,7 @@ It runs guided pitch interviews, scores every answer, gives sharp investor-style
 - Immersive AI interview stage (central orb + live self-view + compact transcript strip + persistent analysis panel)
 - Auto turn-taking in live mode (prevents self-echo loops)
 - **UI** — viewport-stable layouts (home, setup, coaching); chat transcript scrolls inside the conversation column; setup keeps **Start pitch session** pinned while the form scrolls
+- **NABC Lab** (`/nabc-lab`) — additive assignment workflow: transcript evaluator agent, writer agent, and transcript-vs-video comparison agent
 
 ## Tech Stack
 
@@ -272,6 +273,7 @@ You should get JSON with `assistantMessage` and `activeSection: "need"`. If you 
 9. Use **End session** anytime for a full report, or **Restart** / **Change pitch idea** as needed
 10. Use rewrite helper when needed
 11. Generate final outputs and copy/export
+12. Optional assignment flow: open `/nabc-lab` for transcript scoring, report writing, and transcript-vs-video comparison
 
 ## Notes for Contributors
 

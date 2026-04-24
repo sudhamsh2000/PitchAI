@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import {
+  orchestrateNABCCompareReports,
+  orchestrateNABCTranscriptEvaluation,
+  orchestrateNABCWriteReport,
   orchestrateEvaluateAndContinue,
   orchestrateFinalPitches,
   orchestrateRewrite,
@@ -103,6 +106,38 @@ export async function POST(req: Request) {
     if (action === "session_report") {
       const entries = (body.entries as SessionFeedbackEntry[]) || [];
       const result = await orchestrateSessionReport(openai, { mode, pitchBrief, entries });
+      return NextResponse.json(result);
+    }
+
+    if (action === "nabc_transcript_evaluate") {
+      const transcript = String(body.transcript || "");
+      if (!transcript.trim()) {
+        return NextResponse.json({ error: "transcript is required" }, { status: 400 });
+      }
+      const result = await orchestrateNABCTranscriptEvaluation(openai, { transcript });
+      return NextResponse.json(result);
+    }
+
+    if (action === "nabc_report_write") {
+      const evaluation = body.evaluation as Parameters<typeof orchestrateNABCWriteReport>[1]["evaluation"];
+      const teamName = String(body.teamName || "").trim() || undefined;
+      if (!evaluation) {
+        return NextResponse.json({ error: "evaluation is required" }, { status: 400 });
+      }
+      const result = await orchestrateNABCWriteReport(openai, { evaluation, teamName });
+      return NextResponse.json(result);
+    }
+
+    if (action === "nabc_compare_reports") {
+      const transcriptBasedReport = String(body.transcriptBasedReport || "");
+      const videoBasedReport = String(body.videoBasedReport || "");
+      if (!transcriptBasedReport.trim() || !videoBasedReport.trim()) {
+        return NextResponse.json(
+          { error: "transcriptBasedReport and videoBasedReport are required" },
+          { status: 400 },
+        );
+      }
+      const result = await orchestrateNABCCompareReports(openai, { transcriptBasedReport, videoBasedReport });
       return NextResponse.json(result);
     }
 
