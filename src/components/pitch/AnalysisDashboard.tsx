@@ -11,21 +11,40 @@ export function AnalysisDashboard({
   feedback,
   typing,
   complete,
+  liveMonologue,
+  nabcLiveHints,
+  nabcTranscriptLength,
+  nabcListening,
 }: {
   section: NABCSection;
   feedback: ScoreFeedback | null;
   typing: boolean;
   complete: boolean;
+  liveMonologue?: boolean;
+  nabcLiveHints?: Record<NABCSection, boolean> | null;
+  /** Monologue text length (pitch only) for smooth NABC bar motion */
+  nabcTranscriptLength?: number;
+  nabcListening?: boolean;
 }) {
   return (
     <aside className="flex h-auto min-h-0 w-full flex-col gap-5 overflow-hidden border-l border-black/10 bg-white/55 p-5 dark:border-white/10 dark:bg-[rgba(8,12,19,0.7)] lg:h-full">
       <div className="shrink-0">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-white">Analysis</h2>
-        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-300">Investor-style signal, not cheerleading.</p>
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-300">
+          {liveMonologue
+            ? "A light, live read on NABC as you go—so you are never guessing in silence. Scores come after the debrief."
+            : "Investor-style signal, not cheerleading."}
+        </p>
       </div>
 
       <div className="shrink-0">
-        <NABCProgress active={section} complete={complete} />
+        <NABCProgress
+          active={section}
+          complete={complete}
+          liveHints={liveMonologue ? (nabcLiveHints ?? null) : null}
+          liveTranscriptLength={nabcTranscriptLength ?? 0}
+          listeningLine={nabcListening !== false}
+        />
       </div>
 
       <div className="shrink-0 rounded-xl border border-black/10 bg-white/72 p-4 dark:border-white/10 dark:bg-[#111722]">
@@ -63,6 +82,10 @@ export function AnalysisDashboard({
               </div>
             ) : null}
           </>
+        ) : liveMonologue ? (
+          <p className="text-xs text-zinc-500 dark:text-zinc-300">
+            Friday is not scoring mid-pitch. You will get a full report after the delivery debrief.
+          </p>
         ) : (
           <p className="text-xs text-zinc-500 dark:text-zinc-300">
             Submit an answer to see clarity, specificity, and strength scores.

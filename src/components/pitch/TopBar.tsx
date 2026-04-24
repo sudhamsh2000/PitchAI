@@ -23,6 +23,7 @@ export function TopBar({
   remainingSeconds,
   /** While > 0, pitch countdown is paused during Friday’s intro (same wall clock as parent). */
   introGraceSecondsLeft,
+  awaitingStart,
   pacingMode,
 }: {
   mode?: PitchMode;
@@ -44,6 +45,8 @@ export function TopBar({
   /** Omit or pass `null` for practice sessions with no countdown */
   remainingSeconds?: number | null;
   introGraceSecondsLeft?: number | null;
+  /** Live: session open but pitch timer not started (before Start session now). */
+  awaitingStart?: boolean;
   pacingMode?: SessionPacingMode;
 }) {
   const timed = remainingSeconds != null && Number.isFinite(remainingSeconds);
@@ -95,7 +98,11 @@ export function TopBar({
             Intro · timer in {introGraceSecondsLeft}s
           </span>
         ) : null}
-        {timed ? (
+        {awaitingStart ? (
+          <span className="hidden max-w-[14rem] rounded-full border border-amber-300/50 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-900 sm:inline dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-100/95">
+            Ready when you are — timer starts on Start
+          </span>
+        ) : timed ? (
           <span className="hidden rounded-full border border-black/10 bg-white/70 px-2 py-0.5 text-[10px] font-mono font-semibold text-zinc-600 sm:inline dark:border-white/15 dark:bg-[#111722] dark:text-zinc-200">
             {timerLabel} left
           </span>
@@ -104,7 +111,7 @@ export function TopBar({
             Practice · no timer
           </span>
         )}
-        {timed && !(introGraceSecondsLeft != null && introGraceSecondsLeft > 0) ? (
+        {timed && !awaitingStart && !(introGraceSecondsLeft != null && introGraceSecondsLeft > 0) ? (
           <span className="hidden rounded-full border border-black/10 bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-zinc-600 sm:inline dark:border-white/15 dark:bg-[#111722] dark:text-zinc-200">
             {pacingLabel}
           </span>

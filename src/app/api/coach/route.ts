@@ -1,20 +1,21 @@
 import { NextResponse } from "next/server";
 import {
-  orchestrateNABCCompareReports,
-  orchestrateNABCTranscriptEvaluation,
-  orchestrateNABCWriteReport,
   orchestrateEvaluateAndContinue,
   orchestrateFinalPitches,
+  orchestrateMonologueDebrief,
+  orchestrateMonologueSessionReport,
   orchestrateRewrite,
   orchestrateSessionReport,
   orchestrateStart,
 } from "@/lib/agents/orchestrator";
 import { createOpenAIClient, sanitizeErrorMessage, usingOpenRouter } from "@/lib/agents/llm-client";
+import { scheduleSessionDatasetCapture, clipDatasetString } from "@/lib/session-dataset/capture";
 import type { NABCSection, PitchMode, SessionFeedbackEntry } from "@/types/pitch";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
+  const clientSessionId = req.headers.get("x-pitchai-session-id");
   const openai = createOpenAIClient();
   if (!openai) {
     return NextResponse.json(
@@ -35,6 +36,15 @@ export async function POST(req: Request) {
     rawLen === 0 ? 0 : Math.max(1, Math.min(30, Number.isFinite(rawLen) ? rawLen : 5));
   const elapsedSeconds = Math.max(0, Number(body.elapsedSeconds) || 0);
 
+  const datasetBase = (act: string) => ({
+    clientSessionId,
+    mode,
+    sessionLengthMinutes,
+    elapsedSeconds,
+    pitchBrief,
+    action: act,
+  });
+
   try {
     if (action === "start") {
       if (!pitchBrief.trim()) {
@@ -43,7 +53,43 @@ export async function POST(req: Request) {
           { status: 400 },
         );
       }
-      const result = await orchestrateStart(openai, { mode, pitchBrief, sessionLengthMinutes });
+      const flow = body.flow === "interview" ? "interview" : "monologue";
+      const result = await orchestrateStart(openai, { mode, pitchBrief, sessionLengthMinutes, flow });
+      scheduleSessionDatasetCapture(datasetBase("start"), { flow, response: result });
+      return NextResponse.json(result);
+    }
+
+    if (action === "monologue_debrief") {
+      const monologue =
+        String(body.monologue || "").trim() ||
+        "No pitch transcript was captured. Debrief on delivery and NABC structure in general from the founder context.";
+      const result = await orchestrateMonologueDebrief(openai, {
+        mode,
+        pitchBrief,
+        monologue,
+        sessionLengthMinutes,
+      });
+      scheduleSessionDatasetCapture(datasetBase("monologue_debrief"), {
+        monologue: clipDatasetString(monologue),
+        response: result,
+      });
+      return NextResponse.json(result);
+    }
+
+    if (action === "monologue_session_report") {
+      const monologue = String(body.monologue || "");
+      const debriefReply = String(body.debriefReply || "");
+      const result = await orchestrateMonologueSessionReport(openai, {
+        mode,
+        pitchBrief,
+        monologue,
+        debriefReply,
+      });
+      scheduleSessionDatasetCapture(datasetBase("monologue_session_report"), {
+        monologue: clipDatasetString(monologue),
+        debriefReply: clipDatasetString(debriefReply),
+        response: result,
+      });
       return NextResponse.json(result);
     }
 
@@ -64,6 +110,14 @@ export async function POST(req: Request) {
         feedbackHistory,
         sessionLengthMinutes,
         elapsedSeconds,
+      });
+      scheduleSessionDatasetCapture(datasetBase("evaluate_and_continue"), {
+        activeSection,
+        followUpsAskedThisSection,
+        userAnswer: clipDatasetString(userAnswer),
+        messageCount: messages?.length,
+        messages: messages?.map((m) => ({ role: m.role, content: clipDatasetString(m.content) })),
+        response: result,
       });
       return NextResponse.json(result);
     }
@@ -87,6 +141,12 @@ export async function POST(req: Request) {
         feedback,
         feedbackHistory,
       });
+      scheduleSessionDatasetCapture(datasetBase("rewrite"), {
+        userAnswer: clipDatasetString(userAnswer),
+        activeSection,
+        feedback,
+        response: result,
+      });
       return NextResponse.json(result);
     }
 
@@ -100,44 +160,25 @@ export async function POST(req: Request) {
         feedbackHistory,
         sessionLengthMinutes,
       });
+      scheduleSessionDatasetCapture(datasetBase("final_pitches"), {
+        messageCount: messages?.length,
+        messages: messages?.map((m) => ({ role: m.role, content: clipDatasetString(m.content) })),
+        response: result,
+      });
       return NextResponse.json(result);
     }
 
     if (action === "session_report") {
       const entries = (body.entries as SessionFeedbackEntry[]) || [];
       const result = await orchestrateSessionReport(openai, { mode, pitchBrief, entries });
-      return NextResponse.json(result);
-    }
-
-    if (action === "nabc_transcript_evaluate") {
-      const transcript = String(body.transcript || "");
-      if (!transcript.trim()) {
-        return NextResponse.json({ error: "transcript is required" }, { status: 400 });
-      }
-      const result = await orchestrateNABCTranscriptEvaluation(openai, { transcript });
-      return NextResponse.json(result);
-    }
-
-    if (action === "nabc_report_write") {
-      const evaluation = body.evaluation as Parameters<typeof orchestrateNABCWriteReport>[1]["evaluation"];
-      const teamName = String(body.teamName || "").trim() || undefined;
-      if (!evaluation) {
-        return NextResponse.json({ error: "evaluation is required" }, { status: 400 });
-      }
-      const result = await orchestrateNABCWriteReport(openai, { evaluation, teamName });
-      return NextResponse.json(result);
-    }
-
-    if (action === "nabc_compare_reports") {
-      const transcriptBasedReport = String(body.transcriptBasedReport || "");
-      const videoBasedReport = String(body.videoBasedReport || "");
-      if (!transcriptBasedReport.trim() || !videoBasedReport.trim()) {
-        return NextResponse.json(
-          { error: "transcriptBasedReport and videoBasedReport are required" },
-          { status: 400 },
-        );
-      }
-      const result = await orchestrateNABCCompareReports(openai, { transcriptBasedReport, videoBasedReport });
+      scheduleSessionDatasetCapture(datasetBase("session_report"), {
+        entryCount: entries.length,
+        entries: entries.map((e) => ({
+          ...e,
+          userAnswer: clipDatasetString(e.userAnswer),
+        })),
+        response: result,
+      });
       return NextResponse.json(result);
     }
 

@@ -36,14 +36,52 @@ function looksTooSimilar(a: string, b: string) {
 
 export async function runInterviewStart(
   openai: OpenAI,
-  params: { mode: PitchMode; pitchBrief: string; sessionLengthMinutes?: number },
+  params: {
+    mode: PitchMode;
+    pitchBrief: string;
+    sessionLengthMinutes?: number;
+    flow?: "interview" | "monologue";
+  },
 ): Promise<{ assistantMessage: string; activeSection: NABCSection }> {
   const modeLine = modeInstruction(params.mode);
   const sm = params.sessionLengthMinutes ?? 5;
+  const isMono = params.flow === "monologue";
   const budgetLine =
     sm === 0
       ? `Practice mode — no countdown. You still run the full NABC arc (Need → Approach → Benefits → Competition); prioritize clarity over racing the clock.`
       : `Session budget is ${sm} minutes. Aim to touch all four NABC stages within that window—about a quarter of the time per stage as a loose guide—so nothing important is rushed at the end.`;
+
+  if (isMono) {
+    const mono = `${FRIDAY_INTERVIEW_SYSTEM}
+${modeLine}
+${founderContextBlock(params.pitchBrief)}
+${budgetLine}
+
+This is a live pitch pass: in this first message, do not ask a practice question. You will not interrupt them while they speak.
+Introduce yourself as Friday in one warm, human short sentence.
+Then in 2-4 more sentences, sound encouraging and real: they get one continuous run at their pitch, NABC progress will support them on the side, and you will be quiet and listen until the timer (or if they end early)—then you will talk about how it landed. Invite them to tap "Start session now" when they feel ready, so the clock only then—no need to rush off the start line. Let them take a breath.
+${sm === 0 ? "Mention that practice mode has no countdown but one full, calm pass through NABC still matters." : ""}
+Do not use markdown.`;
+    const completion = await createCoachCompletion(openai, {
+      temperature: 0.6,
+      maxTokens: 450,
+      messages: [
+        { role: "system", content: mono },
+        { role: "user", content: `Begin. Return JSON: {"assistantMessage": string}` },
+      ],
+    });
+    const text = completion.choices[0]?.message?.content || "{}";
+    const parsed = tryParseJson<{ assistantMessage: string }>(text);
+    if (parsed?.assistantMessage?.trim()) {
+      return { assistantMessage: parsed.assistantMessage.trim(), activeSection: "need" };
+    }
+    return {
+      assistantMessage:
+        "I’m Friday—I’ll be in your corner for this. When you’re set, you’ll have one full take to pitch; I’ll stay quiet and really listen, then we’ll talk through how it landed. No rush: tap Start session now when you’re ready—the timer only starts then—and you’ll see NABC along the way.",
+      activeSection: "need",
+    };
+  }
+
   const system = `${FRIDAY_INTERVIEW_SYSTEM}
 ${modeLine}
 ${founderContextBlock(params.pitchBrief)}

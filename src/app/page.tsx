@@ -34,12 +34,6 @@ export default function Home() {
             >
               Start pitching session
             </Link>
-            <Link
-              href="/nabc-lab"
-              className="inline-flex h-10 min-w-64 items-center justify-center rounded-xl border border-zinc-300 bg-white/80 px-6 text-sm font-semibold text-zinc-800 transition hover:border-sky-400 hover:text-sky-700"
-            >
-              Open NABC Lab
-            </Link>
             <p className="text-xs text-zinc-600 dark:text-zinc-500">Setup your pitch context next, then begin the voice interview.</p>
           </div>
           </div>

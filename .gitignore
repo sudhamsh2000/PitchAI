@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# server-side coach session logs (training / eval data)
+/data/pitchai-sessions
+
 # dependencies
 /node_modules
 /.pnp

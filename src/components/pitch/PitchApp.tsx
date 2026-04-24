@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePitchStore } from "@/store/usePitchStore";
-import { coachEvaluate, coachFinal, coachRewrite, coachSessionReport, coachStart } from "@/lib/coach-client";
+import {
+  coachEvaluate,
+  coachFinal,
+  coachMonologueDebrief,
+  coachMonologueSessionReport,
+  coachRewrite,
+  coachSessionReport,
+  coachStart,
+} from "@/lib/coach-client";
+import { nabcAllComplete, nabcCurrentStage, detectNABCInText } from "@/lib/nabc-detect";
 import { saveSessionReport } from "@/lib/saved-session-reports";
 import type { SessionAnalysisReport, SessionPacingMode } from "@/types/pitch";
 import { PITCH_MODES } from "@/lib/modes";
@@ -18,12 +27,17 @@ import { SetupContextPanel } from "./SetupContextPanel";
 import { ReportsLibraryModal } from "./ReportsLibraryModal";
 import { SessionReportModal } from "./SessionReportModal";
 import { BackgroundBubbles } from "@/components/BackgroundBubbles";
-import {
-  SESSION_COUNTDOWN_GRACE_SECONDS,
-  budgetElapsedSeconds,
-} from "@/lib/session-timer";
+import { budgetElapsedSeconds } from "@/lib/session-timer";
 
 const MIN_BRIEF = 1;
+
+function mergePitchDraft(draft: string, interim: string) {
+  const a = draft.trimEnd();
+  const b = interim.trim();
+  if (!a) return b;
+  if (!b) return a;
+  return `${a}${/\s$/.test(a) ? "" : " "}${b}`;
+}
 
 export function PitchApp() {
   const [draft, setDraft] = useState("");
@@ -76,6 +90,8 @@ export function PitchApp() {
   const closeFinal = usePitchStore((s) => s.closeFinal);
   const setLastUserMessageId = usePitchStore((s) => s.setLastUserMessageId);
   const updateFeedbackEntryAnswer = usePitchStore((s) => s.updateFeedbackEntryAnswer);
+  const pitchTranscript = usePitchStore((s) => s.pitchTranscript);
+  const setPitchTranscript = usePitchStore((s) => s.setPitchTranscript);
 
   const [rewriteBusy, setRewriteBusy] = useState(false);
   const [rewriteNotes, setRewriteNotes] = useState<string[] | null>(null);
@@ -87,6 +103,8 @@ export function PitchApp() {
   const [reportEndCause, setReportEndCause] = useState<"manual" | "time">("manual");
   const reportSourceRef = useRef<"end" | "library" | null>(null);
   const sessionReportFlowLockRef = useRef(false);
+  const debriefInProgressRef = useRef(false);
+  const afterDebriefReportCauseRef = useRef<"manual" | "time">("manual");
 
   const onFinalSpeech = useCallback((chunk: string) => {
     const t = normalizeDictationChunk(chunk);
@@ -121,8 +139,10 @@ export function PitchApp() {
     setError(null);
     setTyping(true);
     try {
-      const res = await coachStart(currentMode, brief, usePitchStore.getState().sessionLengthMinutes);
-      bootstrapFromStart(res.assistantMessage, res.activeSection);
+      const res = await coachStart(currentMode, brief, usePitchStore.getState().sessionLengthMinutes, {
+        flow: "monologue",
+      });
+      bootstrapFromStart(res.assistantMessage, res.activeSection, { phase: "pre_start" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start coach session.");
     } finally {
@@ -137,7 +157,6 @@ export function PitchApp() {
     }
     setSetupBusy(true);
     setLivePaused(false);
-    beginSessionClock();
     setError(null);
     setLastSpokenAssistantId(null);
     try {
@@ -146,6 +165,77 @@ export function PitchApp() {
       setSetupBusy(false);
     }
   };
+
+  const startSessionNow = useCallback(() => {
+    if (usePitchStore.getState().phase !== "pre_start") return;
+    setError(null);
+    setLivePaused(false);
+    setPitchTranscript("");
+    setDraft("");
+    setInterim("");
+    beginSessionClock();
+    setPhase("pitching");
+  }, [beginSessionClock, setDraft, setError, setInterim, setLivePaused, setPhase, setPitchTranscript]);
+
+  const beginDebriefFlow = useCallback(
+    async (source: "time" | "manual") => {
+    if (debriefInProgressRef.current) return;
+    if (usePitchStore.getState().phase !== "pitching") return;
+    debriefInProgressRef.current = true;
+    afterDebriefReportCauseRef.current = source;
+    stopSpeaking();
+    stopPremiumSpeech();
+    setCoachSpeaking(false);
+    setLastSpokenAssistantId(null);
+    if (liveAutoSubmitTimer.current) {
+      clearTimeout(liveAutoSubmitTimer.current);
+      liveAutoSubmitTimer.current = null;
+    }
+    const fin =
+      mergePitchDraft(draft, interimTranscript).trim() || usePitchStore.getState().pitchTranscript.trim();
+    setPitchTranscript(fin);
+    setDraft("");
+    setInterim("");
+    stopListening();
+    setRecording(false);
+    clearSessionClock();
+    setPhase("loading_debrief");
+    setTyping(true);
+    setError(null);
+    try {
+      const st = usePitchStore.getState();
+      const { assistantMessage } = await coachMonologueDebrief({
+        mode: st.mode,
+        pitchBrief: st.pitchBrief,
+        monologue: fin,
+        sessionLengthMinutes: st.sessionLengthMinutes,
+      });
+      const msg = appendMessage("assistant", assistantMessage);
+      setLastSpokenAssistantId(msg.id);
+      setPhase("debrief");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start debrief.");
+      setPhase("pitching");
+    } finally {
+      setTyping(false);
+      debriefInProgressRef.current = false;
+    }
+  },
+  [
+    appendMessage,
+    draft,
+    interimTranscript,
+    setError,
+    setInterim,
+    setLastSpokenAssistantId,
+    setPhase,
+    setPitchTranscript,
+    setRecording,
+    setTyping,
+    stopListening,
+    clearSessionClock,
+  ],
+  );
 
   const speakCoach = useCallback(
     (text: string) => {
@@ -189,6 +279,11 @@ export function PitchApp() {
   );
 
   useEffect(() => {
+    if (phase !== "pitching") return;
+    setPitchTranscript(mergePitchDraft(draft, interimTranscript));
+  }, [phase, draft, interimTranscript, setPitchTranscript]);
+
+  useEffect(() => {
     if (sessionPhase !== "coaching" || !sessionStartedAt) return;
     const id = setInterval(() => {
       const elapsed = Math.max(0, Math.floor((Date.now() - sessionStartedAt) / 1000));
@@ -198,7 +293,7 @@ export function PitchApp() {
         return;
       }
       const total = sessionLengthMinutes * 60;
-      const budgetElapsed = budgetElapsedSeconds(elapsed);
+      const budgetElapsed = elapsed;
       const ratio = total > 0 ? budgetElapsed / total : 0;
       const nextPacing: SessionPacingMode = ratio >= 0.9 ? "urgent" : ratio >= 0.7 ? "compressed" : "normal";
       setPacingMode(nextPacing);
@@ -293,6 +388,7 @@ export function PitchApp() {
   const submitAnswer = useCallback(async () => {
     const text = draft.trim();
     if (!text) return;
+    if (phase === "debrief" || phase === "pitching" || phase === "pre_start") return;
     if (phase !== "asking") return;
 
     const prior = [...usePitchStore.getState().messages];
@@ -367,18 +463,28 @@ export function PitchApp() {
     };
   }, [coachSpeaking, draft, isRecording, isTyping, livePaused, liveSession, phase, submitAnswer]);
 
-  // Live call behavior: auto-open mic when ready for next answer.
+  // Live: open mic for continuous monologue, or the next Q&A / debrief answer.
   useEffect(() => {
     if (!liveSession) return;
     if (livePaused) return;
     if (sessionPhase !== "coaching") return;
-    if (phase !== "asking") return;
     if (isTyping) return;
     if (coachSpeaking) return;
-    if (isRecording) return;
-    if (draft.trim()) return;
     if (typeof window !== "undefined" && !window.isSecureContext) return;
     if (!micSupported) return;
+
+    if (phase === "pitching") {
+      if (isRecording) return;
+      setError(null);
+      setRecording(true);
+      setInterim("");
+      startListening((text) => setInterim(text));
+      return;
+    }
+
+    if (phase !== "asking" && phase !== "debrief") return;
+    if (isRecording) return;
+    if (phase === "asking" && draft.trim()) return;
 
     setError(null);
     setRecording(true);
@@ -443,7 +549,6 @@ export function PitchApp() {
     setInterim("");
     setDraft("");
     setLivePaused(false);
-    beginSessionClock();
     clearCoachThread();
     await startCoachingSession();
   };
@@ -513,29 +618,95 @@ export function PitchApp() {
     [clearSessionClock, setError, setInterim, setRecording, stopListening],
   );
 
+  const submitDebriefAndReport = useCallback(async () => {
+    const text = draft.trim();
+    if (phase !== "debrief") return;
+    if (sessionReportFlowLockRef.current) return;
+    if (!text) {
+      if (!window.confirm("Send an empty follow-up and generate your report?")) return;
+    }
+    sessionReportFlowLockRef.current = true;
+    const userMsg = appendMessage("user", text || "(no written follow-up)");
+    setLastUserMessageId(userMsg.id);
+    setDraft("");
+    setInterim("");
+    stopListening();
+    setRecording(false);
+    setPhase("loading_report");
+    setTyping(true);
+    setError(null);
+    setReportEndCause(afterDebriefReportCauseRef.current);
+    setEndSessionBusy(true);
+    try {
+      const st = usePitchStore.getState();
+      const report = await coachMonologueSessionReport({
+        mode: st.mode,
+        pitchBrief: st.pitchBrief,
+        monologue: st.pitchTranscript.trim(),
+        debriefReply: text,
+      });
+      saveSessionReport(report);
+      setActiveReport(report);
+      reportSourceRef.current = "end";
+      setReportModalKind("end");
+      setReportModalOpen(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not generate session report.");
+      setPhase("debrief");
+    } finally {
+      setTyping(false);
+      setEndSessionBusy(false);
+      sessionReportFlowLockRef.current = false;
+    }
+  }, [
+    appendMessage,
+    draft,
+    phase,
+    setError,
+    setInterim,
+    setLastUserMessageId,
+    setPhase,
+    setRecording,
+    setTyping,
+    stopListening,
+  ]);
+
   const handleEndSession = useCallback(async () => {
-    if (
-      !window.confirm(
-        "End this session and generate your full analysis report? You can reopen saved reports from the setup screen.",
-      )
-    ) {
+    if (phase === "pre_start") {
+      if (!window.confirm("Leave without starting? Your setup will be kept.")) return;
+      stopSpeaking();
+      stopPremiumSpeech();
+      setCoachSpeaking(false);
+      returnToSetup();
       return;
     }
-    await runSessionReportFlow("manual");
-  }, [runSessionReportFlow]);
+    if (phase === "pitching") {
+      if (!window.confirm("End the pitch and move to a short debrief (delivery & NABC) before the full report?")) {
+        return;
+      }
+      void beginDebriefFlow("manual");
+      return;
+    }
+    if (phase === "debrief" || phase === "loading_debrief" || phase === "loading_report") {
+      if (!window.confirm("Generate the full report from this debrief now?")) return;
+      void submitDebriefAndReport();
+    }
+  }, [beginDebriefFlow, phase, returnToSetup, stopSpeaking, submitDebriefAndReport]);
 
   useEffect(() => {
     if (sessionPhase !== "coaching" || !sessionStartedAt) return;
     if (sessionLengthMinutes === 0) return;
+    if (phase !== "pitching") return;
     const limitSec = sessionLengthMinutes * 60;
-    if (budgetElapsedSeconds(elapsedSeconds) < limitSec) return;
-    if (phase === "loading_feedback" || phase === "loading_final" || isTyping) return;
-    void runSessionReportFlow("time");
+    if (elapsedSeconds < limitSec) return;
+    if (isTyping) return;
+    if (debriefInProgressRef.current) return;
+    void beginDebriefFlow("time");
   }, [
+    beginDebriefFlow,
     elapsedSeconds,
     isTyping,
     phase,
-    runSessionReportFlow,
     sessionLengthMinutes,
     sessionPhase,
     sessionStartedAt,
@@ -552,13 +723,14 @@ export function PitchApp() {
     clearCoachThread();
     setDraft("");
     setLivePaused(false);
-    beginSessionClock();
     setTyping(true);
     setError(null);
     try {
       const brief = usePitchStore.getState().pitchBrief;
-      const res = await coachStart(m, brief, usePitchStore.getState().sessionLengthMinutes);
-      bootstrapFromStart(res.assistantMessage, res.activeSection);
+      const res = await coachStart(m, brief, usePitchStore.getState().sessionLengthMinutes, {
+        flow: "monologue",
+      });
+      bootstrapFromStart(res.assistantMessage, res.activeSection, { phase: "pre_start" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not restart with new mode.");
     } finally {
@@ -568,18 +740,42 @@ export function PitchApp() {
 
   const modeHint = useMemo(() => PITCH_MODES.find((x) => x.id === mode)?.hint ?? "", [mode]);
 
-  /** Time left on the pitch clock (intro grace does not consume budget). */
+  const liveNabcText = useMemo(
+    () => mergePitchDraft(pitchTranscript, mergePitchDraft(draft, interimTranscript)),
+    [pitchTranscript, draft, interimTranscript],
+  );
+  const nabcLiveHints = useMemo(() => {
+    if (phase === "pitching") return detectNABCInText(liveNabcText);
+    if (phase === "debrief" || phase === "loading_debrief" || phase === "loading_report") {
+      return detectNABCInText(pitchTranscript);
+    }
+    return null;
+  }, [liveNabcText, phase, pitchTranscript]);
+  const nabcSection = useMemo(
+    () => (nabcLiveHints ? nabcCurrentStage(nabcLiveHints) : activeSection),
+    [nabcLiveHints, activeSection],
+  );
+  const nabcLiveComplete = useMemo(
+    () => (nabcLiveHints ? nabcAllComplete(nabcLiveHints) : false),
+    [nabcLiveHints],
+  );
+
+  /** Length of pitch text only — keeps NABC bar in sync with speech, not debrief typing. */
+  const nabcBarTranscriptLength = useMemo(() => {
+    if (phase === "pitching") return liveNabcText.length;
+    if (phase === "debrief" || phase === "loading_debrief" || phase === "loading_report") {
+      return pitchTranscript.length;
+    }
+    return 0;
+  }, [phase, liveNabcText, pitchTranscript]);
+
+  /** Time left after the user starts the session (no intro grace — timer begins on “Start session now”). */
   const pitchBudgetRemainingSeconds = useMemo(() => {
     if (sessionLengthMinutes === 0) return null;
+    if (!sessionStartedAt) return null;
     const limitSec = sessionLengthMinutes * 60;
-    return Math.max(0, limitSec - budgetElapsedSeconds(elapsedSeconds));
-  }, [elapsedSeconds, sessionLengthMinutes]);
-
-  /** Seconds until the countdown starts (during Friday’s intro). */
-  const introGraceSecondsLeft = useMemo(() => {
-    if (sessionLengthMinutes === 0) return null;
-    return Math.max(0, SESSION_COUNTDOWN_GRACE_SECONDS - elapsedSeconds);
-  }, [elapsedSeconds, sessionLengthMinutes]);
+    return Math.max(0, limitSec - elapsedSeconds);
+  }, [elapsedSeconds, sessionLengthMinutes, sessionStartedAt]);
 
   const toggleLivePause = useCallback(() => {
     if (!liveSession) return;
@@ -596,15 +792,30 @@ export function PitchApp() {
     }
   }, [livePaused, liveSession, setInterim, setRecording, stopListening]);
 
-  const complete = phase === "final" || phase === "loading_final";
+  const complete =
+    ((phase === "pitching" || phase === "debrief" || phase === "loading_debrief" || phase === "loading_report") &&
+      nabcLiveComplete) ||
+    phase === "final" ||
+    phase === "loading_final";
 
   const inputDisabled =
+    phase === "pre_start" ||
+    phase === "loading_debrief" ||
+    phase === "loading_report" ||
     phase === "loading_feedback" ||
     phase === "loading_final" ||
     phase === "idle" ||
     phase === "review" ||
     phase === "final" ||
     showFinal;
+
+  const inputPlaceholder = useMemo(() => {
+    if (phase === "debrief")
+      return "Share what you noticed—what landed, what wobbled, what you’d do differently. Type or talk…";
+    if (phase === "pitching")
+      return "Say it like you would on a call—dictate, type, pause. Friday stays with you; no one jumps in until the timer ends…";
+    return "Answer the coach with specifics, numbers, and examples…";
+  }, [phase]);
 
   const reportModals = (
     <>
@@ -671,14 +882,15 @@ export function PitchApp() {
         onRestart={() => void restartConversation()}
         onEndSession={() => void handleEndSession()}
         endSessionBusy={endSessionBusy}
-        disableEndSession={endSessionBusy}
+        disableEndSession={
+          endSessionBusy || phase === "loading_debrief" || phase === "loading_report" || isTyping
+        }
         liveSession={liveSession}
         livePaused={livePaused}
         onToggleLivePause={toggleLivePause}
         remainingSeconds={pitchBudgetRemainingSeconds}
-        introGraceSecondsLeft={
-          introGraceSecondsLeft != null && introGraceSecondsLeft > 0 ? introGraceSecondsLeft : null
-        }
+        introGraceSecondsLeft={null}
+        awaitingStart={phase === "pre_start"}
         pacingMode={pacingMode}
         onEditPitch={() => {
           stopSpeaking();
@@ -696,6 +908,23 @@ export function PitchApp() {
         }}
         showEditPitch
       />
+
+      {phase === "pre_start" ? (
+        <div className="shrink-0 border-b border-amber-400/25 bg-amber-50/90 px-5 py-4 dark:border-amber-400/20 dark:bg-amber-500/10">
+          <div className="mx-auto flex max-w-6xl flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-medium text-amber-950 dark:text-amber-100/95">
+              Whenever you are ready, tap below—the timer only starts then, so you can settle in. Friday is here to really hear your full pitch, not to rush the first word.
+            </p>
+            <button
+              type="button"
+              onClick={startSessionNow}
+              className="shrink-0 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-2.5 text-sm font-bold text-amber-950 shadow-md shadow-amber-500/20 hover:from-amber-400 hover:to-orange-400"
+            >
+              Start session now
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="shrink-0 border-b border-black/10 bg-white/55 px-5 py-2.5 dark:border-white/10 dark:bg-black/35">
         <p className="mx-auto max-w-6xl text-[11px] leading-relaxed text-zinc-600 dark:text-zinc-400">
@@ -719,18 +948,36 @@ export function PitchApp() {
         </div>
         <div className="hidden min-h-0 overflow-y-auto overscroll-contain lg:block lg:h-full lg:min-h-0">
           <AnalysisDashboard
-            section={activeSection}
+            section={nabcSection}
             feedback={latestFeedback}
             typing={isTyping}
             complete={complete}
+            liveMonologue={
+              phase === "pitching" ||
+              phase === "debrief" ||
+              phase === "loading_debrief" ||
+              phase === "loading_report"
+            }
+            nabcLiveHints={nabcLiveHints}
+            nabcTranscriptLength={nabcBarTranscriptLength}
+            nabcListening={phase === "pitching"}
           />
         </div>
         <div className="max-h-[38vh] min-h-0 shrink-0 overflow-y-auto overscroll-contain border-t border-black/10 dark:border-white/10 lg:hidden">
           <AnalysisDashboard
-            section={activeSection}
+            section={nabcSection}
             feedback={latestFeedback}
             typing={isTyping}
             complete={complete}
+            liveMonologue={
+              phase === "pitching" ||
+              phase === "debrief" ||
+              phase === "loading_debrief" ||
+              phase === "loading_report"
+            }
+            nabcLiveHints={nabcLiveHints}
+            nabcTranscriptLength={nabcBarTranscriptLength}
+            nabcListening={phase === "pitching"}
           />
         </div>
       </div>
@@ -775,12 +1022,15 @@ export function PitchApp() {
         <BottomInput
           draft={draft}
           onDraftChange={setDraft}
-          onSend={() => void submitAnswer()}
+          onSend={() => {
+            if (phase === "debrief") void submitDebriefAndReport();
+            else void submitAnswer();
+          }}
           recording={isRecording}
           onMicToggle={toggleMic}
           micSupported={micSupported}
           disabled={inputDisabled}
-          placeholder="Answer the coach’s question with specifics, numbers, and examples…"
+          placeholder={inputPlaceholder}
           modeNote={modeHint ? `Mode: ${modeHint}` : undefined}
           liveSession={liveSession}
           livePaused={livePaused}

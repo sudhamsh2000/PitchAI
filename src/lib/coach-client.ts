@@ -8,6 +8,15 @@ import type {
   SessionAnalysisReport,
   SessionFeedbackEntry,
 } from "@/types/pitch";
+import { getOrCreateClientSessionId } from "@/lib/client-session-id";
+
+function coachHeaders(): Record<string, string> {
+  const h: Record<string, string> = { "Content-Type": "application/json" };
+  if (typeof window !== "undefined") {
+    h["X-Pitchai-Session-Id"] = getOrCreateClientSessionId();
+  }
+  return h;
+}
 
 /** Avoid hung UI when the model or network stalls (AbortSignal.timeout is widely supported). */
 function coachAbort(ms: number): AbortSignal | undefined {
@@ -46,12 +55,23 @@ function toApiMessages(messages: PitchMessage[]) {
     .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 }
 
-export async function coachStart(mode: PitchMode, pitchBrief: string, sessionLengthMinutes?: number) {
+export async function coachStart(
+  mode: PitchMode,
+  pitchBrief: string,
+  sessionLengthMinutes?: number,
+  options?: { flow?: "interview" | "monologue" },
+) {
   try {
     const res = await fetch("/api/coach", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "start", mode, pitchBrief, sessionLengthMinutes }),
+      headers: coachHeaders(),
+      body: JSON.stringify({
+        action: "start",
+        mode,
+        pitchBrief,
+        sessionLengthMinutes,
+        flow: options?.flow === "interview" ? "interview" : "monologue",
+      }),
       signal: coachAbort(120_000),
     });
     if (!res.ok) throw new Error(await readCoachError(res));
@@ -75,7 +95,7 @@ export async function coachEvaluate(params: {
   try {
     const res = await fetch("/api/coach", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: coachHeaders(),
       body: JSON.stringify({
         action: "evaluate_and_continue",
         mode: params.mode,
@@ -108,7 +128,7 @@ export async function coachRewrite(params: {
   try {
     const res = await fetch("/api/coach", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: coachHeaders(),
       body: JSON.stringify({
         action: "rewrite",
         mode: params.mode,
@@ -127,6 +147,58 @@ export async function coachRewrite(params: {
   }
 }
 
+export async function coachMonologueDebrief(params: {
+  mode: PitchMode;
+  pitchBrief: string;
+  monologue: string;
+  sessionLengthMinutes: number;
+}) {
+  try {
+    const res = await fetch("/api/coach", {
+      method: "POST",
+      headers: coachHeaders(),
+      body: JSON.stringify({
+        action: "monologue_debrief",
+        mode: params.mode,
+        pitchBrief: params.pitchBrief,
+        monologue: params.monologue,
+        sessionLengthMinutes: params.sessionLengthMinutes,
+      }),
+      signal: coachAbort(120_000),
+    });
+    if (!res.ok) throw new Error(await readCoachError(res));
+    return (await res.json()) as { assistantMessage: string };
+  } catch (e) {
+    throw new Error(mapCoachFetchError(e));
+  }
+}
+
+export async function coachMonologueSessionReport(params: {
+  mode: PitchMode;
+  pitchBrief: string;
+  monologue: string;
+  debriefReply: string;
+}) {
+  try {
+    const res = await fetch("/api/coach", {
+      method: "POST",
+      headers: coachHeaders(),
+      body: JSON.stringify({
+        action: "monologue_session_report",
+        mode: params.mode,
+        pitchBrief: params.pitchBrief,
+        monologue: params.monologue,
+        debriefReply: params.debriefReply,
+      }),
+      signal: coachAbort(120_000),
+    });
+    if (!res.ok) throw new Error(await readCoachError(res));
+    return (await res.json()) as SessionAnalysisReport;
+  } catch (e) {
+    throw new Error(mapCoachFetchError(e));
+  }
+}
+
 export async function coachSessionReport(params: {
   mode: PitchMode;
   pitchBrief: string;
@@ -135,7 +207,7 @@ export async function coachSessionReport(params: {
   try {
     const res = await fetch("/api/coach", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: coachHeaders(),
       body: JSON.stringify({
         action: "session_report",
         mode: params.mode,
@@ -161,7 +233,7 @@ export async function coachFinal(params: {
   try {
     const res = await fetch("/api/coach", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: coachHeaders(),
       body: JSON.stringify({
         action: "final_pitches",
         mode: params.mode,

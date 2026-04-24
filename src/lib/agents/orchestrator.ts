@@ -1,14 +1,11 @@
 import type OpenAI from "openai";
 import type { CoachEvaluateResult, NABCSection, PitchMode, SessionAnalysisReport, SessionFeedbackEntry, SessionPacingMode } from "@/types/pitch";
-import type { NABCComparisonReport, NABCEvaluation, NABCWrittenReport } from "@/types/nabc-lab";
 import { runEvaluationAgent } from "./evaluationAgent";
 import { runInterviewNext, runInterviewStart } from "./interviewAgent";
-import { runNABCCompareAgent } from "./nabcCompareAgent";
-import { runNABCEvaluatorAgent } from "./nabcEvaluatorAgent";
-import { runNABCWriterAgent } from "./nabcWriterAgent";
 import { runPitchComposerAgent } from "./pitchComposerAgent";
 import { runRewriteAgent } from "./rewriteAgent";
-import { runSessionReportAgent } from "./sessionReportAgent";
+import { runMonologueDebrief } from "./monologueDebriefAgent";
+import { runMonologueSessionReportAgent, runSessionReportAgent } from "./sessionReportAgent";
 import { runUnifiedEvaluateAndContinue } from "./unifiedEvaluateContinue";
 import { buildSessionMemory, deriveProgressInsights } from "./sessionMemory";
 import type { ApiMsg } from "./types";
@@ -73,7 +70,12 @@ function shouldProbeSameSection(
 
 export async function orchestrateStart(
   openai: OpenAI,
-  params: { mode: PitchMode; pitchBrief: string; sessionLengthMinutes?: number },
+  params: {
+    mode: PitchMode;
+    pitchBrief: string;
+    sessionLengthMinutes?: number;
+    flow?: "interview" | "monologue";
+  },
 ) {
   return runInterviewStart(openai, params);
 }
@@ -264,23 +266,30 @@ export async function orchestrateSessionReport(
   };
 }
 
-export async function orchestrateNABCTranscriptEvaluation(
+export async function orchestrateMonologueDebrief(
   openai: OpenAI,
-  params: { transcript: string },
-): Promise<NABCEvaluation> {
-  return runNABCEvaluatorAgent(openai, params);
+  params: { mode: PitchMode; pitchBrief: string; monologue: string; sessionLengthMinutes: number },
+) {
+  return runMonologueDebrief(openai, params);
 }
 
-export async function orchestrateNABCWriteReport(
+export async function orchestrateMonologueSessionReport(
   openai: OpenAI,
-  params: { evaluation: NABCEvaluation; teamName?: string },
-): Promise<NABCWrittenReport> {
-  return runNABCWriterAgent(openai, params);
-}
-
-export async function orchestrateNABCCompareReports(
-  openai: OpenAI,
-  params: { transcriptBasedReport: string; videoBasedReport: string },
-): Promise<NABCComparisonReport> {
-  return runNABCCompareAgent(openai, params);
+  params: { mode: PitchMode; pitchBrief: string; monologue: string; debriefReply: string },
+): Promise<SessionAnalysisReport> {
+  const body = await runMonologueSessionReportAgent(openai, params);
+  return {
+    id: crypto.randomUUID(),
+    createdAt: Date.now(),
+    pitchBrief: params.pitchBrief,
+    mode: params.mode,
+    entries: [],
+    answerCount: 0,
+    averages: body.averages,
+    summary: body.summary,
+    topStrengths: body.topStrengths,
+    priorityImprovements: body.priorityImprovements,
+    overallLabel: body.overallLabel,
+    overallRating: body.overallRating,
+  };
 }

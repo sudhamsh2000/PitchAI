@@ -32,6 +32,32 @@ export function SetupContextPanel({
   const ready = pitchBrief.trim().length >= minChars;
   const lengthOptions = [1, 3, 5, 7, 10];
   const practiceSelected = sessionLengthMinutes === 0;
+  const samplePitchOptions = [
+    {
+      id: "sell-pen",
+      label: "Sell a pen",
+      context:
+        "I want to sell a pen that writes smoothly, never leaks, and feels premium but affordable. My target customers are students and office workers who use pens every day.",
+    },
+    {
+      id: "sell-car",
+      label: "Sell a car",
+      context:
+        "I want to sell a compact city car that is fuel-efficient, easy to park, and low maintenance. My target customers are first-time car buyers and daily commuters.",
+    },
+    {
+      id: "sell-notebook",
+      label: "Sell a notebook",
+      context:
+        "I want to sell a durable notebook with thick paper, clean design, and organized layouts for planning. My target customers are students, creators, and professionals.",
+    },
+    {
+      id: "sell-water-bottle",
+      label: "Sell a water bottle",
+      context:
+        "I want to sell a reusable water bottle that keeps drinks cold for long hours and is easy to carry. My target customers are gym-goers, office workers, and travelers.",
+    },
+  ];
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden text-zinc-800 dark:text-zinc-100">
@@ -100,6 +126,23 @@ export function SetupContextPanel({
             <span className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-300/90">
               Paste context — expand if needed; scrolls inside the box.
             </span>
+            <select
+              disabled={busy}
+              defaultValue=""
+              onChange={(e) => {
+                const picked = samplePitchOptions.find((o) => o.id === e.target.value);
+                if (!picked) return;
+                onBriefChange(picked.context);
+              }}
+              className="w-full rounded-lg border border-black/10 bg-white px-2.5 py-2 text-sm text-zinc-700 outline-none focus:border-sky-500/35 dark:border-white/12 dark:bg-[#0a0e16] dark:text-zinc-100 dark:focus:border-sky-300/45"
+            >
+              <option value="">Choose a simple sample pitch context (optional)</option>
+              {samplePitchOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
             <textarea
               value={pitchBrief}
               onChange={(e) => onBriefChange(e.target.value)}

@@ -12,7 +12,18 @@ import type {
   SessionFeedbackEntry,
 } from "@/types/pitch";
 
-type Phase = "idle" | "asking" | "loading_feedback" | "review" | "loading_final" | "final";
+type Phase =
+  | "idle"
+  | "pre_start"
+  | "pitching"
+  | "loading_debrief"
+  | "debrief"
+  | "loading_report"
+  | "asking"
+  | "loading_feedback"
+  | "review"
+  | "loading_final"
+  | "final";
 
 export type SessionPhase = "setup" | "coaching";
 
@@ -47,6 +58,8 @@ interface PitchState {
   showFinal: boolean;
   /** Accumulated scored turns for end-of-session report */
   feedbackHistory: SessionFeedbackEntry[];
+  /** Live monologue text (continuous pitch, not split into chat turns) */
+  pitchTranscript: string;
 
   setMode: (m: PitchMode) => void;
   setPitchBrief: (t: string) => void;
@@ -67,7 +80,12 @@ interface PitchState {
   appendMessage: (role: PitchMessage["role"], content: string) => PitchMessage;
   updateMessage: (id: string, content: string) => void;
 
-  bootstrapFromStart: (assistantMessage: string, section: NABCSection) => void;
+  setPitchTranscript: (t: string) => void;
+  bootstrapFromStart: (
+    assistantMessage: string,
+    section: NABCSection,
+    options?: { phase?: Phase },
+  ) => void;
   setTyping: (v: boolean) => void;
   setPhase: (p: Phase) => void;
   setLastUserMessageId: (id: string | null) => void;
@@ -116,6 +134,7 @@ export const usePitchStore = create<PitchState>((set, get) => ({
   finalPitches: null,
   showFinal: false,
   feedbackHistory: [],
+  pitchTranscript: "",
 
   setMode: (m) => set({ mode: m }),
   setPitchBrief: (t) => set({ pitchBrief: t }),
@@ -129,6 +148,8 @@ export const usePitchStore = create<PitchState>((set, get) => ({
   setPacingMode: (p) => set({ pacingMode: p }),
   clearSessionClock: () => set({ sessionStartedAt: null, elapsedSeconds: 0, pacingMode: "normal" }),
   setSessionPhase: (p) => set({ sessionPhase: p }),
+
+  setPitchTranscript: (t) => set({ pitchTranscript: t }),
 
   clearCoachThread: () =>
     set({
@@ -148,6 +169,7 @@ export const usePitchStore = create<PitchState>((set, get) => ({
       finalPitches: null,
       showFinal: false,
       feedbackHistory: [],
+      pitchTranscript: "",
       sessionStartedAt: null,
       elapsedSeconds: 0,
       pacingMode: "normal",
@@ -172,6 +194,7 @@ export const usePitchStore = create<PitchState>((set, get) => ({
       finalPitches: null,
       showFinal: false,
       feedbackHistory: [],
+      pitchTranscript: "",
       sessionStartedAt: null,
       elapsedSeconds: 0,
       pacingMode: "normal",
@@ -205,6 +228,7 @@ export const usePitchStore = create<PitchState>((set, get) => ({
       finalPitches: null,
       showFinal: false,
       feedbackHistory: [],
+      pitchTranscript: "",
       sessionLengthMinutes: 5,
       sessionStartedAt: null,
       elapsedSeconds: 0,
@@ -227,10 +251,10 @@ export const usePitchStore = create<PitchState>((set, get) => ({
       messages: s.messages.map((m) => (m.id === id ? { ...m, content } : m)),
     })),
 
-  bootstrapFromStart: (assistantMessage, section) =>
+  bootstrapFromStart: (assistantMessage, section, options) =>
     set({
       sessionPhase: "coaching",
-      phase: "asking",
+      phase: options?.phase ?? "asking",
       messages: [
         {
           id: newId(),
@@ -247,6 +271,7 @@ export const usePitchStore = create<PitchState>((set, get) => ({
       pendingMeta: null,
       error: null,
       feedbackHistory: [],
+      pitchTranscript: "",
     }),
 
   stashEvaluateResult: (result) =>
