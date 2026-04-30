@@ -13,7 +13,7 @@ It runs guided pitch interviews, scores every answer, gives sharp investor-style
 ## Latest Update (Apr 2026)
 
 - Introduced an immersive **AI Interview Stage** session layout (central Friday orb + persistent analysis + compact transcript strip).
-- **Pitch session length**: choose **1 / 3 / 5 / 7 / 10 min**, **No limit** (practice, no countdown or auto-stop), or let the timer run out to **auto-end and open the session report**. The **countdown pauses for the first 15 seconds** after start so Friday’s intro does not use pitch time; total wall time for a 5-minute session is **5:15** max before auto-report.
+- **Pitch session length**: choose **1 / 3 / 5 / 7 / 10 min**, **No limit** (practice, no countdown or auto-stop), or let the timer run out to **auto-end and open the session report**. The countdown starts the moment you click **Start pitch session** — a 5-minute session is **5:00** max before auto-report.
 - Timed sessions steer **full NABC coverage** (Need → Approach → Benefits → Competition) within the clock; practice mode keeps depth without a timer.
 - Friday adapts follow-up depth and section moves using remaining time (`On track` / `Compressed` / `Urgent`) when a timer is set.
 - **Setup layout**: coach mode and session length share one compact card so the form fits on screen more comfortably.
@@ -103,10 +103,11 @@ npm install
 
 Create either `.env.local` (recommended) or `.env` in the project root (same folder as `package.json`).
 
-You can copy the template and edit:
+You can copy the template and edit (use either `.env.local` or `.env` — both are loaded by Next.js, and both are gitignored):
 
 ```bash
 cp .env.example .env.local
+# or: cp .env.example .env
 ```
 
 Then add real API keys. You can use **OpenRouter** for chat, **OpenAI** for chat, or both. At least one chat key is required for Friday to respond.
@@ -257,7 +258,7 @@ curl -s -X POST http://localhost:3000/api/coach \
   -d '{"action":"start","mode":"investor","pitchBrief":"A short test product pitch."}'
 ```
 
-You should get JSON with `assistantMessage` and `activeSection: "need"`. If you see an error about missing keys, fix `.env.local` and restart the dev server.
+You should get JSON with `assistantMessage` and `activeSection: "need"`. If you see an error about missing keys, fix `.env.local` (or `.env`) and restart the dev server.
 
 ## How To Use
 
@@ -284,7 +285,7 @@ You should get JSON with `assistantMessage` and `activeSection: "need"`. If you 
 
 - `429 Provider returned error`: OpenRouter model is rate-limited. Wait 20-60 seconds or set a different `OPENROUTER_MODEL`; fallback models are supported via `OPENROUTER_FALLBACK_MODELS`.
 - `503` / provider unavailable: wait and retry, set `OPENROUTER_FALLBACK_MODELS`, switch `OPENROUTER_MODEL`, or use `OPENAI_API_KEY` directly. OpenRouter fallbacks also retry on **503** when configured.
-- **Start pitch session** spins forever / nothing happens: confirm `OPENROUTER_API_KEY` or `OPENAI_API_KEY` in `.env.local` and restart the dev server. Requests time out after a few minutes with a clear error instead of hanging silently.
+- **Start pitch session** spins forever / nothing happens: confirm `OPENROUTER_API_KEY` or `OPENAI_API_KEY` in `.env.local` (or `.env`) and restart the dev server. Requests time out after a few minutes with a clear error instead of hanging silently.
 - Voice sounds robotic: verify Piper is running (`docker ps | grep pitchai-piper`). If not running, app falls back to browser voice.
 - Friday reads technical terms like voice/model/format: set `PIPER_TTS_URL=http://127.0.0.1:5002` and restart `npm run dev`.
 - Live mode hears itself: this is now guarded via turn-taking; if you still see it, hard refresh the app.
