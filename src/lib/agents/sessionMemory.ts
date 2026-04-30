@@ -73,7 +73,10 @@ export function buildSessionMemory(params: {
     strength: e.feedback.strength,
     createdAt: e.createdAt,
   }));
-  const weaknesses = topCounts(params.feedbackHistory.flatMap((e) => toWeaknessLabel(e)));
+
+  // Recurring weaknesses: only from the 4 most recent answers so stale gaps don't linger.
+  const recentHistory = params.feedbackHistory.slice(-4);
+  const weaknesses = topCounts(recentHistory.flatMap((e) => toWeaknessLabel(e)));
   const strengths = topCounts(params.feedbackHistory.flatMap((e) => toStrengthLabel(e)));
 
   const notes: string[] = [];
@@ -83,11 +86,15 @@ export function buildSessionMemory(params: {
     const firstAvg = (first.clarity + first.specificity + first.strength) / 3;
     const lastAvg = (last.clarity + last.specificity + last.strength) / 3;
     if (lastAvg - firstAvg >= 0.6) notes.push("overall quality is trending up");
+    if (firstAvg - lastAvg >= 0.6) notes.push("answers are getting weaker — refocus");
   }
   for (const s of ORDER) {
+    // Require at least 2 scored answers in a section before labelling it.
+    const rows = scoreHistory.filter((p) => p.section === s);
+    if (rows.length < 2) continue;
     const avg = sectionAverage(scoreHistory, s);
-    if (!avg) continue;
-    if (avg < 6) notes.push(`${s} remains underdeveloped`);
+    // Dead-band 5.8–7.2: no label, avoids flip-flop on average sessions.
+    if (avg < 5.8) notes.push(`${s} remains underdeveloped`);
     if (avg >= 7.2) notes.push(`${s} is becoming a strength`);
   }
 
@@ -104,18 +111,68 @@ export function buildSessionMemory(params: {
 }
 
 export function sessionMemoryPromptBlock(memory: SessionMemory): string {
-  const lastAnswers = memory.answerHistory
-    .slice(-3)
-    .map((a, i) => `${i + 1}) [${a.section}] ${a.answer.slice(0, 220)}${a.answer.length > 220 ? "..." : ""}`)
+  const history = memory.answerHistory;
+  const scores = memory.scoreHistory;
+
+  if (!history.length) {
+    return `Session memory — stage: ${memory.currentStage}. No answers recorded yet.`;
+  }
+
+  // Keep the last 2 answers verbatim (freshest context for Friday).
+  // Older answers are collapsed into a one-line per-section digest.
+  const recentCount = Math.min(2, history.length);
+  const recentAnswers = history.slice(-recentCount);
+  const recentScores = scores.slice(-recentCount);
+  const olderAnswers = history.slice(0, history.length - recentCount);
+  const olderScores = scores.slice(0, scores.length - recentCount);
+
+  // Digest: latest excerpt + avg score per section (older answers only).
+  const olderBySec = new Map<string, { avg: number; excerpt: string }>();
+  olderAnswers.forEach((a, i) => {
+    const sc = olderScores[i];
+    if (!sc) return;
+    const avg = (sc.clarity + sc.specificity + sc.strength) / 3;
+    olderBySec.set(a.section, {
+      avg,
+      excerpt: a.answer.slice(0, 130) + (a.answer.length > 130 ? "…" : ""),
+    });
+  });
+
+  const digestLines = [...olderBySec.entries()]
+    .map(([sec, d]) => `  [${sec.toUpperCase()}] avg ${d.avg.toFixed(1)} — "${d.excerpt}"`)
     .join("\n");
 
-  return `Session memory (adaptive context, not retraining):
-- Current stage: ${memory.currentStage}
-- Recurring weaknesses: ${memory.recurringWeaknesses.join(", ") || "none yet"}
-- Strengths: ${memory.strengths.join(", ") || "none yet"}
-- Coaching notes: ${memory.coachingNotes.join(" | ") || "none yet"}
-- Recent answers:
-${lastAnswers || "none yet"}`;
+  const recentLines = recentAnswers
+    .map((a, i) => {
+      const sc = recentScores[i];
+      const avg = sc ? ((sc.clarity + sc.specificity + sc.strength) / 3).toFixed(1) : "?";
+      return `  [${a.section.toUpperCase()}] avg ${avg} — "${a.answer.slice(0, 340)}${a.answer.length > 340 ? "…" : ""}"`;
+    })
+    .join("\n");
+
+  const parts: string[] = [
+    `Session memory — read this before writing assistantMessage:`,
+    `- Current NABC stage: ${memory.currentStage}`,
+    `- Recurring weaknesses (recent answers): ${memory.recurringWeaknesses.join(", ") || "none yet"}`,
+    `- Strengths so far: ${memory.strengths.join(", ") || "none yet"}`,
+    `- Trend: ${memory.coachingNotes.join(" | ") || "no clear pattern yet"}`,
+  ];
+
+  if (digestLines) {
+    parts.push(`Earlier this session:\n${digestLines}`);
+  }
+
+  parts.push(`Most recent answers (highest priority):\n${recentLines}`);
+
+  parts.push(
+    `Memory usage rules:` +
+    `\n- If they improved on something, name it briefly — e.g. "That's clearer than before" or "Good, more specific this time."` +
+    `\n- If a weakness persists across multiple turns, call it out directly — e.g. "We still need a number here" or "You mentioned this earlier but still no proof."` +
+    `\n- When relevant, reference their earlier words — e.g. "You mentioned [X] earlier — how does that connect here?"` +
+    `\n- Do not re-ask topics they already addressed well. Move the session forward.`,
+  );
+
+  return parts.join("\n");
 }
 
 export function strongestAnswersBySection(memory: SessionMemory) {

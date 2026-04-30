@@ -8,7 +8,7 @@ import { runInterviewNext } from "./interviewAgent";
 import { deriveProgressInsights, sessionMemoryPromptBlock, type SessionMemory } from "./sessionMemory";
 import type { ApiMsg, EvaluationAgentResult } from "./types";
 
-const MIN_FOLLOWUPS_PER_SECTION = 1;
+const MIN_FOLLOWUPS_PER_SECTION = 0;
 const MAX_FOLLOWUPS_PER_SECTION = 2;
 
 function nextSection(current: NABCSection): NABCSection | "done" {
@@ -41,6 +41,10 @@ function shouldProbeSameSection(
     if (exceptional) return false;
     return true;
   }
+
+  // Medium answer (not clearly weak): cap at 1 follow-up then advance.
+  // Prevents "borderline needsFollowup" cases from burning 2 probes on an acceptable answer.
+  if (followUps >= 1 && avg >= 6.2 && low >= 5.5) return false;
 
   if (evaluation.needsFollowup) return true;
   if (avg < 6.2) return true;
@@ -102,10 +106,28 @@ ${modeLine}
 ${founderContextBlock(params.pitchBrief)}${memoryBlock}
 
 You do TWO things in ONE response (JSON only):
-1) Score the founder's latest answer (harsh but fair).
-2) Write Friday's next spoken line as "assistantMessage" — concise, voice-friendly, no markdown.
+1) Score the founder's latest answer (harsh but fair — internal, never shown verbatim).
+2) Write Friday's next spoken line as "assistantMessage".
 First, infer what the founder most likely means even if dictation is rough.
-If meaning is unclear, assistantMessage should ask one crisp clarification question.
+
+needsFollowup: set true ONLY when the answer is missing something that would materially change an investor's view — a key metric, named customer, or concrete differentiator. If avg score ≥ 7 and no critical element is absent, set false. "Could be more specific" is NOT a reason for needsFollowup.
+followupReason: if needsFollowup is true, write one short specific phrase — "[what's missing] — [what would fix it]". Example: "No metric given — need a number or frequency." Set null if needsFollowup is false.
+
+assistantMessage RULES (critical — apply to every single response):
+- 1 to 3 sentences. Hard limit.
+- Ask exactly ONE question. Not a question plus a clarifying clause — ONE.
+- Never open with praise: no "great", "excellent", "good point", "that's helpful", or any empty opener.
+- Never use formal language: not "please provide", "could you elaborate", "I'd like to understand".
+- Do not restate or summarise what the founder just said before asking your question.
+- Sound like a curious mentor who has heard a hundred pitches — direct, warm, occasionally blunt.
+- No markdown, no bullets, no asterisks.
+- If probeSameSection is true: identify the weakest scoring dimension and ask ONE question targeting ONLY that gap:
+  • Lowest = specificity (<6.5): ask for a number, named customer, or concrete example. If competition: ask for a named competitor and one clear differentiator.
+  • Lowest = clarity (<6.5): ask them to restate the core claim in one plain sentence.
+  • Lowest = strength (<6.5): ask for the single strongest proof point. If competition: ask what stops an incumbent from copying this.
+  • Do NOT ask a generic "tell me more". Target the exact missing element.
+  • Use followupReason from the evaluation if it names a specific gap.
+- If probeSameSection is false and advancing: one brief acknowledgment (only if something genuinely landed), then the first sharp question for the new section. Do not list what you'll cover next.
 
 Branching rules (must set probeSameSection boolean to match what you will do in assistantMessage):
 - Let followUps = ${followUps}, section = ${params.activeSection}.
@@ -116,7 +138,7 @@ ${timeBudgetLine}
 
 If probeSameSection is true: ONE follow-up question still in the same NABC section (${params.activeSection}).
 If false and section is not competition: move to the NEXT NABC section and ask its first strong question.
-If false and section is competition: interview is done — assistantMessage closes briefly (2 short sentences), set interviewComplete in JSON.
+If false and section is competition: interview is done — assistantMessage closes in 1-2 sentences (no celebration, just signal you have what you need), set interviewComplete in JSON.
 
 Return JSON exactly:
 {

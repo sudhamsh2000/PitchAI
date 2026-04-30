@@ -27,7 +27,7 @@ function resolveSessionLengthMinutes(raw?: number): { minutes: number; timed: bo
 function followupCapsForPacing(pacing: SessionPacingMode) {
   if (pacing === "urgent") return { min: 0, max: 1 };
   if (pacing === "compressed") return { min: 0, max: 1 };
-  return { min: 1, max: 2 };
+  return { min: 0, max: 2 };
 }
 
 function nextSection(current: NABCSection): NABCSection | "done" {
@@ -60,6 +60,9 @@ function shouldProbeSameSection(
     if (exceptional) return false;
     return true;
   }
+
+  // Medium answer (not clearly weak): cap at 1 follow-up then advance.
+  if (followUps >= 1 && avg >= 6.2 && low >= 5.5) return false;
 
   if (evaluation.needsFollowup) return true;
   if (avg < 6.2) return true;

@@ -16,6 +16,8 @@ export function TopBar({
   onEndSession,
   endSessionBusy,
   disableEndSession,
+  onTestVoice,
+  testVoiceBusy,
   onOpenReports,
   liveSession,
   livePaused,
@@ -37,6 +39,8 @@ export function TopBar({
   onEndSession?: () => void;
   endSessionBusy?: boolean;
   disableEndSession?: boolean;
+  onTestVoice?: () => void;
+  testVoiceBusy?: boolean;
   /** Setup screen: open saved analysis reports */
   onOpenReports?: () => void;
   liveSession?: boolean;
@@ -155,6 +159,17 @@ export function TopBar({
             className="rounded-lg border border-black/15 bg-white/75 px-2.5 py-1 text-[11px] font-medium text-zinc-800 hover:border-sky-500/35 disabled:opacity-40 dark:border-white/18 dark:bg-[#141b29] dark:text-zinc-100 dark:hover:border-sky-300/40"
           >
             {endSessionBusy ? "Ending…" : "End session"}
+          </motion.button>
+        ) : null}
+        {onTestVoice ? (
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.97 }}
+            disabled={testVoiceBusy}
+            onClick={onTestVoice}
+            className="rounded-lg border border-black/15 bg-white/75 px-2.5 py-1 text-[11px] font-medium text-zinc-800 hover:border-sky-500/35 disabled:opacity-40 dark:border-white/18 dark:bg-[#141b29] dark:text-zinc-100 dark:hover:border-sky-300/40"
+          >
+            {testVoiceBusy ? "Testing…" : "Test voice"}
           </motion.button>
         ) : null}
 

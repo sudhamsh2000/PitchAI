@@ -96,6 +96,7 @@ export function PitchApp() {
   const [rewriteBusy, setRewriteBusy] = useState(false);
   const [rewriteNotes, setRewriteNotes] = useState<string[] | null>(null);
   const [endSessionBusy, setEndSessionBusy] = useState(false);
+  const [testVoiceBusy, setTestVoiceBusy] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [activeReport, setActiveReport] = useState<SessionAnalysisReport | null>(null);
@@ -105,6 +106,8 @@ export function PitchApp() {
   const sessionReportFlowLockRef = useRef(false);
   const debriefInProgressRef = useRef(false);
   const afterDebriefReportCauseRef = useRef<"manual" | "time">("manual");
+  const endSessionBusyRef = useRef(false);
+  const lastSpokenAssistantIdRef = useRef<string | null>(null);
 
   const onFinalSpeech = useCallback((chunk: string) => {
     const t = normalizeDictationChunk(chunk);
@@ -140,15 +143,16 @@ export function PitchApp() {
     setTyping(true);
     try {
       const res = await coachStart(currentMode, brief, usePitchStore.getState().sessionLengthMinutes, {
-        flow: "monologue",
+        flow: "interview",
       });
-      bootstrapFromStart(res.assistantMessage, res.activeSection, { phase: "pre_start" });
+      bootstrapFromStart(res.assistantMessage, res.activeSection);
+      beginSessionClock();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start coach session.");
     } finally {
       setTyping(false);
     }
-  }, [bootstrapFromStart, setError, setTyping]);
+  }, [beginSessionClock, bootstrapFromStart, setError, setTyping]);
 
   const beginFromSetup = async () => {
     if (pitchBrief.trim().length < MIN_BRIEF) {
@@ -278,6 +282,62 @@ export function PitchApp() {
     [naturalVoiceName, setInterim, setRecording, stopListening],
   );
 
+  const runVoiceTest = useCallback(async () => {
+    if (testVoiceBusy) return;
+    const line = "Voice check. If you can hear this, Friday audio is working.";
+    setError(null);
+    setTestVoiceBusy(true);
+    // Keep Friday voice from feeding into dictation during test.
+    stopListening();
+    setRecording(false);
+    setInterim("");
+    stopSpeaking();
+    stopPremiumSpeech();
+    let started = false;
+    try {
+      const ok = await speakPremiumText(line, {
+        voice: naturalVoiceName,
+        onStart: () => {
+          started = true;
+        },
+        onError: (msg) => {
+          setError(msg || "Voice test failed.");
+        },
+      });
+      if (!ok) {
+        speakText(
+          line,
+          () => {
+            started = true;
+          },
+          () => {
+            /* no-op */
+          },
+        );
+        setTimeout(() => {
+          if (!started) {
+            setError(
+              "Browser blocked audio playback. Click anywhere on the page once, unmute the tab, then test again.",
+            );
+          }
+        }, 700);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Voice test failed.");
+    } finally {
+      setTimeout(() => setTestVoiceBusy(false), 450);
+    }
+  }, [
+    naturalVoiceName,
+    setError,
+    setInterim,
+    setRecording,
+    stopListening,
+    testVoiceBusy,
+    stopSpeaking,
+    stopPremiumSpeech,
+  ]);
+
   useEffect(() => {
     if (phase !== "pitching") return;
     setPitchTranscript(mergePitchDraft(draft, interimTranscript));
@@ -309,6 +369,14 @@ export function PitchApp() {
   }, []);
 
   useEffect(() => {
+    endSessionBusyRef.current = endSessionBusy;
+  }, [endSessionBusy]);
+
+  useEffect(() => {
+    lastSpokenAssistantIdRef.current = lastSpokenAssistantId;
+  }, [lastSpokenAssistantId]);
+
+  useEffect(() => {
     if (sessionPhase !== "setup") return;
     stopSpeaking();
     stopPremiumSpeech();
@@ -319,9 +387,19 @@ export function PitchApp() {
   useEffect(() => {
     if (sessionPhase !== "coaching") return;
     if (!liveSession) return;
+    const currentPhase = usePitchStore.getState().phase;
+    if (
+      currentPhase === "loading_report" ||
+      currentPhase === "loading_debrief" ||
+      endSessionBusyRef.current
+    ) {
+      return;
+    }
     const last = messages[messages.length - 1];
     if (!last || last.role !== "assistant") return;
-    if (last.id === lastSpokenAssistantId) return;
+    if (last.id === lastSpokenAssistantIdRef.current) return;
+    // Guard against duplicate effect runs before React state flushes.
+    lastSpokenAssistantIdRef.current = last.id;
     setLastSpokenAssistantId(last.id);
     speakCoach(last.content);
   }, [sessionPhase, liveSession, lastSpokenAssistantId, messages, speakCoach]);
@@ -626,6 +704,10 @@ export function PitchApp() {
       if (!window.confirm("Send an empty follow-up and generate your report?")) return;
     }
     sessionReportFlowLockRef.current = true;
+    stopSpeaking();
+    stopPremiumSpeech();
+    setCoachSpeaking(false);
+    setLastSpokenAssistantId(null);
     const userMsg = appendMessage("user", text || "(no written follow-up)");
     setLastUserMessageId(userMsg.id);
     setDraft("");
@@ -664,10 +746,13 @@ export function PitchApp() {
     phase,
     setError,
     setInterim,
+    setLastSpokenAssistantId,
     setLastUserMessageId,
     setPhase,
     setRecording,
     setTyping,
+    stopPremiumSpeech,
+    stopSpeaking,
     stopListening,
   ]);
 
@@ -690,23 +775,42 @@ export function PitchApp() {
     if (phase === "debrief" || phase === "loading_debrief" || phase === "loading_report") {
       if (!window.confirm("Generate the full report from this debrief now?")) return;
       void submitDebriefAndReport();
+      return;
     }
-  }, [beginDebriefFlow, phase, returnToSetup, stopSpeaking, submitDebriefAndReport]);
+    // Interview flow: end now and generate the session report from scored answers.
+    if (phase === "asking" || phase === "review" || phase === "loading_feedback") {
+      const hasAnswers = usePitchStore.getState().feedbackHistory.length > 0;
+      const prompt = hasAnswers
+        ? "End the session now and generate your analysis report?"
+        : "End the session now? You haven't answered any questions yet — the report will be empty.";
+      if (!window.confirm(prompt)) return;
+      void runSessionReportFlow("manual");
+    }
+  }, [beginDebriefFlow, phase, returnToSetup, runSessionReportFlow, stopSpeaking, submitDebriefAndReport]);
 
   useEffect(() => {
     if (sessionPhase !== "coaching" || !sessionStartedAt) return;
     if (sessionLengthMinutes === 0) return;
-    if (phase !== "pitching") return;
     const limitSec = sessionLengthMinutes * 60;
     if (elapsedSeconds < limitSec) return;
     if (isTyping) return;
-    if (debriefInProgressRef.current) return;
-    void beginDebriefFlow("time");
+    // Monologue flow → debrief.
+    if (phase === "pitching") {
+      if (debriefInProgressRef.current) return;
+      void beginDebriefFlow("time");
+      return;
+    }
+    // Interview flow → generate session report directly. Wait for any in-flight evaluation.
+    if (phase === "asking" || phase === "review") {
+      if (sessionReportFlowLockRef.current) return;
+      void runSessionReportFlow("time");
+    }
   }, [
     beginDebriefFlow,
     elapsedSeconds,
     isTyping,
     phase,
+    runSessionReportFlow,
     sessionLengthMinutes,
     sessionPhase,
     sessionStartedAt,
@@ -728,9 +832,10 @@ export function PitchApp() {
     try {
       const brief = usePitchStore.getState().pitchBrief;
       const res = await coachStart(m, brief, usePitchStore.getState().sessionLengthMinutes, {
-        flow: "monologue",
+        flow: "interview",
       });
-      bootstrapFromStart(res.assistantMessage, res.activeSection, { phase: "pre_start" });
+      bootstrapFromStart(res.assistantMessage, res.activeSection);
+      beginSessionClock();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not restart with new mode.");
     } finally {
@@ -883,8 +988,15 @@ export function PitchApp() {
         onEndSession={() => void handleEndSession()}
         endSessionBusy={endSessionBusy}
         disableEndSession={
-          endSessionBusy || phase === "loading_debrief" || phase === "loading_report" || isTyping
+          endSessionBusy ||
+          phase === "loading_debrief" ||
+          phase === "loading_report" ||
+          phase === "loading_feedback" ||
+          phase === "loading_final" ||
+          isTyping
         }
+        onTestVoice={() => void runVoiceTest()}
+        testVoiceBusy={testVoiceBusy}
         liveSession={liveSession}
         livePaused={livePaused}
         onToggleLivePause={toggleLivePause}

@@ -36,11 +36,30 @@ Use session memory to identify recurring weakness patterns.`;
       ...params.messages.map((m) => ({ role: m.role, content: m.content })),
       {
         role: "user",
-        content: `Evaluate ONLY this latest founder answer (not the whole thread for scoring context beyond clarity).
+        content: `Evaluate ONLY this latest founder answer.
 
 """
 ${params.userAnswer}
 """
+
+Scoring rules:
+- Reconstruct likely intent first if phrasing looks like noisy speech-to-text.
+- Scores 0-10. Give 8+ only for answers with named customers, real metrics, or concrete proof.
+- clarity: is the core claim understandable in one read?
+- specificity: are there actual numbers, names, or examples — not just adjectives?
+- strength: is the argument convincing to a skeptical investor?
+
+needsFollowup rules (keep this a high bar — do NOT set true for stylistic improvement):
+- Set true ONLY if the answer is missing something that would materially change an investor's decision: a key metric, a named customer or user type, or a concrete differentiator.
+- If the overall impression is "reasonable but could be tighter" and avg score is ≥ 7 — set false and move forward.
+- Vague phrasing alone is not enough; missing proof that matters is.
+
+followupReason rules:
+- If needsFollowup is true: write ONE short, specific phrase naming what is missing and what would fix it.
+  Format: "[what's missing] — [what would fix it]"
+  Good examples: "No customer type named — need a specific user or company segment." / "No metric given — need a number, frequency, or cost." / "Differentiation is hand-wavy — how is this different from [the obvious alternative]?"
+  Bad examples: "Could be more specific." / "Needs more detail." / "Vague answer."
+- If needsFollowup is false: set followupReason to null.
 
 Return JSON exactly:
 {
@@ -51,13 +70,7 @@ Return JSON exactly:
   "needsFollowup": boolean,
   "followupReason": string | null
 }
-(feedback: 2-4 sharp lines; needsFollowup true if vague/unproven/hand-wavy.)
-
-Rules:
-- First reconstruct likely intent if phrasing looks like noisy speech-to-text.
-- Scores 0-10. 8+ only for genuinely specific, evidence-backed answers.
-- needsFollowup true if the answer is vague, generic, missing proof, missing numbers when relevant, or hand-wavy vs competition.
-- If healthcare mode, flag unsupported clinical or compliance claims.`,
+feedback: 2-4 sharp bullets. No generic praise. If healthcare mode, flag unsupported clinical or compliance claims.`,
       },
     ],
   });

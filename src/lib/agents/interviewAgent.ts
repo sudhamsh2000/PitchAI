@@ -5,7 +5,7 @@ import type { NABCSection, PitchMode } from "@/types/pitch";
 import { FRIDAY_INTERVIEW_SYSTEM } from "./friday-base";
 import { createCoachCompletion, tryParseJson } from "./llm-client";
 import { sessionMemoryPromptBlock } from "./sessionMemory";
-import type { InterviewAgentParams } from "./types";
+import type { EvaluationAgentResult, InterviewAgentParams } from "./types";
 
 function sectionLabel(s: NABCSection | "done") {
   switch (s) {
@@ -26,12 +26,60 @@ function normalizeQuestionText(text: string) {
   return text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function looksTooSimilar(a: string, b: string) {
+function tokenSet(text: string): Set<string> {
+  return new Set(text.split(/\s+/).filter((w) => w.length > 2));
+}
+
+function jaccardSimilarity(a: string, b: string): number {
+  const sa = tokenSet(a);
+  const sb = tokenSet(b);
+  if (!sa.size || !sb.size) return 0;
+  let intersection = 0;
+  for (const w of sa) if (sb.has(w)) intersection++;
+  return intersection / (sa.size + sb.size - intersection);
+}
+
+/**
+ * Deterministic gap detection — returns a specific, actionable sentence about
+ * what is missing from the founder's answer. Used to anchor follow-up questions
+ * so they target the exact missing element, not a generic "tell me more".
+ * Priority: model's own followupReason (if substantive) → lowest scoring dimension → fallback.
+ */
+function detectSpecificGap(ev: EvaluationAgentResult, section: NABCSection): string {
+  // Use the evaluator's reason if it's specific enough (more than a generic phrase).
+  if (ev.followupReason && ev.followupReason.trim().length > 20) {
+    return ev.followupReason.trim();
+  }
+  const low = Math.min(ev.clarity, ev.specificity, ev.strength);
+  // Specificity is the weakest — ask for concrete evidence.
+  if (ev.specificity === low && ev.specificity < 6.5) {
+    if (section === "competition") {
+      return "No named competitor or concrete differentiator — need a specific alternative and one clear reason this beats it.";
+    }
+    return "No concrete number, named customer, or specific example — need at least one of those.";
+  }
+  // Clarity is the weakest — the claim itself is unclear.
+  if (ev.clarity === low && ev.clarity < 6.5) {
+    return "The core claim is unclear — what exactly is being said in one plain sentence?";
+  }
+  // Strength is the weakest — the argument doesn't hold up.
+  if (ev.strength === low && ev.strength < 6.5) {
+    if (section === "competition") {
+      return "The differentiation argument is weak — what stops an incumbent or well-funded startup from copying this?";
+    }
+    return "The argument isn't convincing — what is the single strongest proof point?";
+  }
+  // All dimensions are borderline — ask for the highest-impact missing element.
+  return "The answer needs one concrete proof point — a number, a customer, or a measurable result.";
+}
+
+/** True when two question strings share ≥62% of their content words — catches paraphrases. */
+function looksTooSimilar(a: string, b: string): boolean {
   if (!a || !b) return false;
   const na = normalizeQuestionText(a);
   const nb = normalizeQuestionText(b);
   if (!na || !nb) return false;
-  return na === nb || na.includes(nb) || nb.includes(na);
+  return jaccardSimilarity(na, nb) >= 0.62;
 }
 
 export async function runInterviewStart(
@@ -86,8 +134,9 @@ Do not use markdown.`;
 ${modeLine}
 ${founderContextBlock(params.pitchBrief)}
 ${budgetLine}
-You are starting the interview. Introduce yourself as Friday in ONE short sentence only (first session message).
-Then 1-2 sentences of expectations. Then ask ONE sharp first question about NEED only.
+You are opening the session. Three sentences maximum total.
+Introduce yourself as Friday in one short sentence. Then ask ONE sharp opening question about NEED — the specific painful problem, for exactly which person, and why it matters now.
+Do not explain what NABC is. Do not list what the session will cover. Do not say "great to meet you". Speak like someone who has already read their brief and wants the real answer.
 Do not use markdown.`;
 
   const completion = await createCoachCompletion(openai, {
@@ -132,31 +181,29 @@ Timed sessions: keep all four NABC stages on track before time expires—about ~
   const system = `${FRIDAY_INTERVIEW_SYSTEM}
 ${modeLine}
 ${founderContextBlock(params.pitchBrief)}${memoryBlock}${timeBlock}`;
-  const lastAssistantQuestion = [...params.messages]
-    .reverse()
-    .find((m) => m.role === "assistant")
-    ?.content?.trim();
+  const recentAssistantQuestions = [...params.messages]
+    .filter((m) => m.role === "assistant")
+    .slice(-3)
+    .map((m) => m.content?.trim())
+    .filter(Boolean) as string[];
 
   let instruction = "";
   if (params.intent === "followup_same_section") {
-    instruction = `You are still in ${sectionLabel(params.activeSection)}.
-The founder's last answer needs a follow-up (avg score ~${avg.toFixed(1)}).
-Evaluation notes: needsFollowup=${ev.needsFollowup}. ${ev.followupReason ? `Reason: ${ev.followupReason}` : ""}
-Ask ONE incisive follow-up question in Friday's voice. Probe for numbers, proof, specificity, or wedge vs alternatives as appropriate.
-Bias the question toward recurring weaknesses from session memory when relevant.
-Assume some speech-to-text noise and infer likely meaning before challenging details.
-Do NOT repeat or paraphrase your previous question.
-If pacing is compressed/urgent, keep the question short and prioritize highest-impact gap.
-Do not repeat the evaluation verbatim. No markdown.`;
+    const gap = detectSpecificGap(ev, params.activeSection);
+    instruction = `Still in ${sectionLabel(params.activeSection)}. Avg score ~${avg.toFixed(1)}.
+Specific gap to probe: "${gap}"
+Ask ONE question that targets ONLY this gap. Do not ask about anything else.
+1 to 2 sentences. Do not open with praise. Do not restate what they said.
+${params.pacingMode === "compressed" || params.pacingMode === "urgent" ? "Pacing is tight — one punchy sentence only." : ""}
+No markdown.`;
   } else if (params.intent === "advance_section" && params.nextSection && params.nextSection !== "done") {
-    instruction = `You are moving forward in NABC to ${sectionLabel(params.nextSection)}.
-Briefly acknowledge momentum in one short phrase, then ask the FIRST strong question for ${sectionLabel(params.nextSection)}.
-Stay mode-aware. ONE main question (you may add one short clarifying clause). No markdown.`;
+    instruction = `Move to ${sectionLabel(params.nextSection)} — you heard enough here.
+One brief transition (optional, only if something genuinely landed), then ONE strong opening question for ${sectionLabel(params.nextSection)}.
+2 sentences max. Do not summarize what they said. Do not list what you want to cover next. No markdown.`;
   } else if (params.intent === "complete_session") {
-    instruction = `The NABC interview is complete. Say you're ready to generate final pitch scripts from what they shared.
-2 short sentences max, Friday's voice. No markdown.`;
+    instruction = `NABC is done. Tell them in 1-2 sentences that you have what you need and you are ready to build their pitch scripts. Friday's voice — direct, not celebratory. No markdown.`;
   } else {
-    instruction = `Ask ONE sharp Friday question. No markdown.`;
+    instruction = `Ask ONE sharp question in Friday's voice. 1-2 sentences. No markdown.`;
   }
 
   const completion = await createCoachCompletion(openai, {
@@ -168,7 +215,7 @@ Stay mode-aware. ONE main question (you may add one short clarifying clause). No
       {
         role: "user",
         content: `${instruction}
-${lastAssistantQuestion ? `\nPrevious Friday question (do not repeat): "${lastAssistantQuestion}"` : ""}
+${recentAssistantQuestions.length > 0 ? `\nRecent Friday questions — do NOT repeat or closely paraphrase any of these:\n${recentAssistantQuestions.map((q, i) => `${i + 1}. "${q}"`).join("\n")}` : ""}
 
 Latest founder answer (for context):
 """
@@ -184,7 +231,8 @@ Return JSON: {"assistantMessage": string}`,
   const parsed = tryParseJson<{ assistantMessage: string }>(text);
   if (parsed?.assistantMessage?.trim()) {
     const nextLine = parsed.assistantMessage.trim();
-    if (!looksTooSimilar(nextLine, lastAssistantQuestion || "")) {
+    const tooSimilar = recentAssistantQuestions.some((q) => looksTooSimilar(nextLine, q));
+    if (!tooSimilar) {
       return { assistantMessage: nextLine };
     }
   }
@@ -198,7 +246,7 @@ Return JSON: {"assistantMessage": string}`,
   if (params.intent === "followup_same_section") {
     return {
       assistantMessage:
-        "I hear you. Give me a realistic range, not a perfect number: what % of target users see this issue weekly, and how does your pen perform versus cheap and premium alternatives?",
+        "Give me one concrete number or real example that makes this undeniable — a user count, a cost, a frequency, or a named customer who felt this acutely.",
     };
   }
   if (params.nextSection && params.nextSection !== "done") {
